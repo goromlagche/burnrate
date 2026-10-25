@@ -14,7 +14,7 @@ Hover (Waybar) or click (macOS) for the last 7 days and the month total.
 | | Today's $ | Quota |
 |---|---|---|
 | Claude Code | Estimated from `~/.claude/projects/**/*.jsonl` at API list prices | Monthly usage-credit cap, from the same endpoint Claude Code's `/usage` uses |
-| Codex | Estimated from `~/.codex/sessions/**/*.jsonl` at API list prices | Rate-limit window (for example weekly) from the session logs |
+| Codex | Estimated from `~/.codex/sessions/**/*.jsonl` at API list prices | Monthly workspace spend control, from the same endpoint Codex's `/status` uses; else the weekly rate limit from the session logs |
 
 Dollar figures are **estimates at public API prices**, not your bill. Prices
 live in [`pricing.go`](pricing.go); update them when providers change rates.
@@ -61,10 +61,12 @@ Choose **Always Allow** to show the monthly quota.
 
 ## Privacy and security
 
-- Everything runs locally. The only network call is a `GET` to
-  `api.anthropic.com/api/oauth/usage` with your existing Claude Code OAuth
-  token, every 5 minutes. burnrate never refreshes, stores or logs the token.
-- That endpoint is not a documented public API and may change.
+- Everything runs locally except two read-only `GET`s, each every 5 minutes,
+  with the login you already have:
+  - `api.anthropic.com/api/oauth/usage` with the Claude Code OAuth token
+  - `chatgpt.com/backend-api/wham/usage` with the token in `~/.codex/auth.json`
+- burnrate never refreshes, stores or logs either token.
+- Neither endpoint is a documented public API, so both may change.
 - Output and state are written to `~/.cache/burnrate/` with owner-only permissions.
 
 ## Development

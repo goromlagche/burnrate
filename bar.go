@@ -88,12 +88,21 @@ func codexReport(st *State) report {
 		d := st.Days[k]
 		r.Rows = append(r.Rows, []string{k[5:], usd(d.CodexCost), humanTokens(d.CodexTokens)})
 	}
+	// The bar shows the monthly spend control when the workspace sets one, else the weekly limit.
+	if s := st.Spend; s.Limit > 0 {
+		r.HasQuota, r.Percent, r.Window = true, s.Percent, "mo"
+		r.Stale = time.Since(s.FetchedAt) > apiStale
+		r.Notes = append(r.Notes,
+			fmt.Sprintf("Monthly cap: %.0f / %.0f credits (%.0f%%)", s.Used, s.Limit, s.Percent),
+			"Resets "+time.Unix(s.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
+	}
 	if x := st.Codex; !x.SeenAt.IsZero() {
-		r.HasQuota, r.Percent, r.Window = true, x.UsedPercent, window(x.WindowMinutes)
-		r.Notes = []string{
-			fmt.Sprintf("%s limit: %.0f%% used", r.Window, x.UsedPercent),
-			"Resets " + time.Unix(x.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"),
+		if !r.HasQuota {
+			r.HasQuota, r.Percent, r.Window = true, x.UsedPercent, window(x.WindowMinutes)
 		}
+		r.Notes = append(r.Notes,
+			fmt.Sprintf("%s limit: %.0f%% used", window(x.WindowMinutes), x.UsedPercent),
+			"Resets "+time.Unix(x.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
 	}
 	return r
 }

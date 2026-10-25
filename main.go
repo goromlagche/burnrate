@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	usageURL    = "https://api.anthropic.com/api/oauth/usage"
-	apiInterval = 5 * time.Minute
-	apiStale    = 30 * time.Minute
+	claudeUsageURL = "https://api.anthropic.com/api/oauth/usage"
+	codexUsageURL  = "https://chatgpt.com/backend-api/wham/usage"
+	apiInterval    = 5 * time.Minute
+	apiStale       = 30 * time.Minute
 )
 
 type Day struct {
@@ -58,6 +59,15 @@ type CodexQuota struct {
 	SeenAt        time.Time `json:"seen_at"`
 }
 
+// CodexSpend is the workspace's monthly spend control, in credits.
+type CodexSpend struct {
+	Used      float64   `json:"used"`
+	Limit     float64   `json:"limit"` // 0 when the workspace sets no limit
+	Percent   float64   `json:"percent"`
+	ResetsAt  int64     `json:"resets_at"`
+	FetchedAt time.Time `json:"fetched_at"`
+}
+
 // Bump to force a full rescan when the parsed fields change.
 const stateVersion = 4
 
@@ -69,6 +79,7 @@ type State struct {
 	Days    map[string]*Day      `json:"days"`
 	Claude  ClaudeQuota          `json:"claude"`
 	Codex   CodexQuota           `json:"codex"`
+	Spend   CodexSpend           `json:"codex_spend"`
 }
 
 var (
@@ -95,7 +106,7 @@ func main() {
 
 	scanClaude(st, monthStart)
 	scanCodex(st, monthStart)
-	fetchClaudeQuota(st)
+	fetchQuotas(st)
 
 	if err := saveState(st); err != nil {
 		fmt.Fprintln(os.Stderr, "save state:", err)
@@ -351,13 +362,79 @@ func scanCodex(st *State, monthStart time.Time) {
 	}
 }
 
-func fetchClaudeQuota(st *State) {
-	if time.Since(st.Claude.FetchedAt) < apiInterval {
-		return
+func fetchQuotas(st *State) {
+	if time.Since(st.Claude.FetchedAt) >= apiInterval {
+		if err := fetchClaudeAPI(&st.Claude); err != nil {
+			fmt.Fprintln(os.Stderr, "claude usage api:", err)
+		}
 	}
-	if err := fetchClaudeAPI(&st.Claude); err != nil {
-		fmt.Fprintln(os.Stderr, "claude usage api:", err)
+	if time.Since(st.Spend.FetchedAt) >= apiInterval {
+		if err := fetchCodexAPI(&st.Spend); err != nil {
+			fmt.Fprintln(os.Stderr, "codex usage api:", err)
+		}
 	}
+}
+
+// getJSON decodes a GET response. Tokens go only in headers and are never logged.
+func getJSON(url string, headers map[string]string, v any) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "burnrate")
+	for k, val := range headers {
+		req.Header.Set(k, val)
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %s", resp.Status)
+	}
+	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(v)
+}
+
+func fetchCodexAPI(q *CodexSpend) error {
+	b, err := os.ReadFile(filepath.Join(home, ".codex", "auth.json"))
+	if err != nil {
+		return err
+	}
+	var auth struct {
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+			AccountID   string `json:"account_id"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(b, &auth); err != nil {
+		return err
+	}
+	if auth.Tokens.AccessToken == "" {
+		return fmt.Errorf("no token; run codex login")
+	}
+	var body struct {
+		SpendControl struct {
+			Limit *struct {
+				Limit       float64 `json:"limit,string"`
+				Used        float64 `json:"used,string"`
+				UsedPercent float64 `json:"used_percent"`
+				ResetAt     int64   `json:"reset_at"`
+			} `json:"individual_limit"`
+		} `json:"spend_control"`
+	}
+	err = getJSON(codexUsageURL, map[string]string{
+		"Authorization":      "Bearer " + auth.Tokens.AccessToken,
+		"ChatGPT-Account-Id": auth.Tokens.AccountID,
+	}, &body)
+	if err != nil {
+		return err
+	}
+	*q = CodexSpend{FetchedAt: now}
+	if l := body.SpendControl.Limit; l != nil {
+		q.Used, q.Limit, q.Percent, q.ResetsAt = l.Used, l.Limit, l.UsedPercent, l.ResetAt
+	}
+	return nil
 }
 
 // claudeCredentials returns Claude Code's OAuth credentials JSON.
@@ -391,17 +468,6 @@ func fetchClaudeAPI(q *ClaudeQuota) error {
 		return fmt.Errorf("no valid token; run claude once to refresh")
 	}
 
-	req, _ := http.NewRequest("GET", usageURL, nil)
-	req.Header.Set("Authorization", "Bearer "+creds.OAuth.AccessToken)
-	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %s", resp.Status)
-	}
 	var body struct {
 		Extra *struct {
 			MonthlyLimit float64 `json:"monthly_limit"`
@@ -410,7 +476,11 @@ func fetchClaudeAPI(q *ClaudeQuota) error {
 			Decimals     int     `json:"decimal_places"`
 		} `json:"extra_usage"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+	err = getJSON(claudeUsageURL, map[string]string{
+		"Authorization":  "Bearer " + creds.OAuth.AccessToken,
+		"anthropic-beta": "oauth-2025-04-20",
+	}, &body)
+	if err != nil {
 		return err
 	}
 	if body.Extra == nil {
