@@ -26,6 +26,16 @@
 
 ## Install
 
+Ask your coding agent (Claude Code, Codex, ...):
+
+```
+Install burnrate from github.com/goromlagche/burnrate
+```
+
+It follows [`AGENTS.md`](AGENTS.md): it checks the requirements, installs, and asks before it edits your bar config.
+
+### Manual
+
 Requires Go 1.22 or later.
 
 **Linux**
@@ -58,8 +68,6 @@ burnrate install
 - On the first run, allow access to the `Claude Code-credentials` Keychain item.
 
 Remove it with `burnrate uninstall`.
-
-> **Using a coding agent?** Tell it: *"Install burnrate from github.com/goromlagche/burnrate."* It follows [`AGENTS.md`](AGENTS.md).
 
 ## What you see
 
