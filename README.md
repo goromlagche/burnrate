@@ -41,7 +41,7 @@ Requires Go 1.22 or later.
 **Linux**
 
 ```sh
-go install github.com/goromlagche/burnrate@v0.1.4
+go install github.com/goromlagche/burnrate@v0.1.5
 burnrate install
 ```
 
@@ -60,7 +60,7 @@ Set `markup = "pango"` in `general`. Add `read_file` blocks for `~/.cache/burnra
 
 ```sh
 xcode-select --install   # once, to build the menu bar app
-go install github.com/goromlagche/burnrate@v0.1.4
+go install github.com/goromlagche/burnrate@v0.1.5
 burnrate install
 ```
 

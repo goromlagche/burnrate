@@ -52,12 +52,11 @@ Replace `0.05` with the price the user gives.
 
 If the user runs [Vorssaint](https://github.com/vorssaint/vorssaint-utils), offer to show burnrate in its Command Bar.
 
-Create a wrapper. Vorssaint passes what the user types as an argument; the wrapper ignores it and runs `burnrate --text`:
+Link burnrate as `burnrate-text`. Under that name it prints one line and ignores the text Vorssaint passes:
 
 ```sh
 mkdir -p ~/.local/bin
-printf '#!/bin/sh\nexec "%s" --text\n' "$(command -v burnrate || echo "$(go env GOPATH)/bin/burnrate")" > ~/.local/bin/burnrate-text
-chmod +x ~/.local/bin/burnrate-text
+ln -sf "$(command -v burnrate || echo "$(go env GOPATH)/bin/burnrate")" ~/.local/bin/burnrate-text
 ~/.local/bin/burnrate-text ""   # prints: Claude $27.89 78% · Codex $5.27 5%
 ```
 

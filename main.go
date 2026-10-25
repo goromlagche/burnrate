@@ -92,6 +92,10 @@ var (
 )
 
 func main() {
+	// Launchers such as Vorssaint run a link named burnrate-text with the typed text as an argument.
+	if filepath.Base(os.Args[0]) == "burnrate-text" {
+		os.Args = []string{os.Args[0], "--text"}
+	}
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		subcommand(os.Args[1])
 		return
