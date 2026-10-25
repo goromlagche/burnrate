@@ -1,94 +1,97 @@
-# burnrate
+<h1 align="center">burnrate</h1>
 
-How fast are you burning through your AI budget? `burnrate` puts today's
-**Claude Code** and **Codex** spend, plus your quota, in your status bar.
+<p align="center">
+  Today's <b>Claude Code</b> and <b>Codex</b> spend, and your quota, in the status bar.
+</p>
 
-```
- ✳ $27.99  78% mo    ◎ $2.35  2% wk
-```
+<p align="center">
+  <code>✳ $27.89  78% mo</code>&nbsp;&nbsp;&nbsp;<code>◎ $2.35  5% mo</code>
+</p>
 
-Hover (Waybar) or click (macOS) for the last 7 days and the month total.
+<p align="center">
+  Waybar · i3status · macOS menu bar · no dependencies
+</p>
 
-## What it shows
+---
 
-| | Today's $ | Quota |
-|---|---|---|
-| Claude Code | Estimated from `~/.claude/projects/**/*.jsonl` at API list prices | Monthly usage-credit cap, from the same endpoint Claude Code's `/usage` uses |
-| Codex | Estimated from `~/.codex/sessions/**/*.jsonl` at API list prices | Monthly workspace spend control, from the same endpoint Codex's `/status` uses; else the weekly rate limit from the session logs |
+## Features
 
-Dollar figures are **estimates at public API prices**, not your bill. Prices
-live in [`pricing.go`](pricing.go); update them when providers change rates.
-Models without a listed price (for example `codex-auto-review`) count tokens
-but no dollars. Codex turns on the priority (fast) tier cost 2x.
-
-Each billed event is counted once: Claude by message and request ID, Codex by
-turn and running total, so repeated lines, resumed sessions and forked
-sessions do not double count. The approach follows
-[T3 Code](https://github.com/pingdotgg/t3code) and
-[Orca](https://github.com/stablyai/orca).
-
-Logs are read incrementally (only new bytes since the last run), so a run takes
-milliseconds after the first scan of the month.
+- **Today's spend.** Each response is priced at API list prices.
+- **Quota.** Claude's monthly cap and Codex's monthly workspace credits. The weekly limit is the fallback.
+- **History.** Hover or click to see the last 7 days and the month total.
+- **Fast.** Logs are read incrementally. A run takes milliseconds.
+- **Exact counts.** Repeats, resumed sessions and forked sessions count once.
 
 ## Install
 
 Requires Go 1.22 or later.
 
-### Linux (Waybar or i3status)
-
 ```sh
-make install-linux   # symlinks the binary and a systemd user timer (runs every minute)
+git clone https://github.com/goromlagche/burnrate && cd burnrate
 ```
 
-Then add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc)
-to your Waybar config. Icons need a [Nerd Font](https://www.nerdfonts.com/).
-
-For i3status, enable `markup = "pango"` and add a `read_file` block pointing at
-`~/.cache/burnrate/claude.txt` and `codex.txt`.
-
-### macOS (menu bar)
+**Linux.** Installs a systemd user timer that runs every minute.
 
 ```sh
-xcode-select --install   # once, for swiftc
-make install-macos       # builds the menu bar app and starts it at login
+make install-linux
 ```
 
-[`BurnrateBar.swift`](contrib/macos/BurnrateBar.swift) is a small native app
-with no dependencies. It runs `burnrate --menubar` every minute.
+Add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar. Icons need a [Nerd Font](https://www.nerdfonts.com/). For i3status, set `markup = "pango"` and read `~/.cache/burnrate/claude.txt` and `codex.txt`.
 
-The first run asks for access to the `Claude Code-credentials` Keychain item.
-Choose **Always Allow** to show the monthly quota.
+**macOS.** Builds a native menu bar app and starts it at login.
 
-## Config (optional)
+```sh
+xcode-select --install   # once
+make install-macos
+```
 
-`~/.config/burnrate/config.json`:
+On the first run, allow access to the `Claude Code-credentials` Keychain item.
+
+**CLI only.**
+
+```sh
+go install github.com/goromlagche/burnrate@latest
+burnrate --json
+```
+
+## How it works
+
+| | Today's $ | Quota |
+|---|---|---|
+| Claude Code | `~/.claude/projects` logs × API prices | Monthly cap, from the endpoint that `/usage` uses |
+| Codex | `~/.codex/sessions` logs × API prices | Monthly workspace credits, from the endpoint that `/status` uses |
+
+- Dollar figures are estimates at public API prices. They are not your bill.
+- Prices are in [`pricing.go`](pricing.go). Models without a price count as $0.
+- Codex priority (fast) turns cost 2×.
+- Deduplication follows [T3 Code](https://github.com/pingdotgg/t3code) and [Orca](https://github.com/stablyai/orca).
+
+## Config
+
+Optional. `~/.config/burnrate/config.json`:
 
 ```json
 { "codex_credit_usd": <USD per credit> }
 ```
 
-OpenAI reports the Codex spend control in credits. The price of one credit
-depends on your plan or agreement: divide what you pay by the credits you get.
-Set it to also show the cap in dollars. Leave it out to show credits only.
+OpenAI reports Codex credits, not dollars. Divide what you pay by the credits you get. burnrate then shows the cap in dollars.
 
-## Privacy and security
+## Privacy
 
-- Everything runs locally except two read-only `GET`s, each every 5 minutes,
-  with the login you already have:
-  - `api.anthropic.com/api/oauth/usage` with the Claude Code OAuth token
-  - `chatgpt.com/backend-api/wham/usage` with the token in `~/.codex/auth.json`
-- burnrate never refreshes, stores or logs either token.
-- Neither endpoint is a documented public API, so both may change.
-- Output and state are written to `~/.cache/burnrate/` with owner-only permissions.
+- All work is local, except two read-only requests every 5 minutes:
+  - `api.anthropic.com/api/oauth/usage` with your Claude Code token
+  - `chatgpt.com/backend-api/wham/usage` with your Codex token
+- burnrate does not refresh, store or log tokens.
+- Both endpoints are undocumented and can change.
+- Output goes to `~/.cache/burnrate/`. Only you can read it.
 
 ## Development
 
 ```sh
 make test
-go run . --json          # full state
-go run . --menubar
+go run . --json
 ```
 
-Claude, Codex and OpenAI are trademarks of their owners. The icons come from
-[Nerd Fonts](https://www.nerdfonts.com/) (Codicons). This project is not
-affiliated with Anthropic or OpenAI.
+---
+
+<sub>Claude, Codex and OpenAI are trademarks of their owners. Icons from <a href="https://www.nerdfonts.com/">Nerd Fonts</a> (Codicons). Not affiliated with Anthropic or OpenAI. MIT license.</sub>
