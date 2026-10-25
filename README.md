@@ -5,7 +5,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/preview.svg" alt="burnrate in the status bar: Claude $27.89, 78% of the monthly cap; Codex $2.35, 5%" width="366">
+  <img src="docs/preview.svg" alt="burnrate in Waybar: Claude $27.89 at 78% of the monthly cap, Codex $2.35 at 5%" width="320">
+  &nbsp;&nbsp;
+  <img src="docs/macos.png" alt="burnrate in the macOS menu bar: Codex $1.03 at 5%, Claude $0.48 at 78%" width="230">
 </p>
 
 <p align="center">
@@ -27,7 +29,7 @@
 Requires Go 1.22 or later.
 
 ```sh
-go install github.com/goromlagche/burnrate@latest
+go install github.com/goromlagche/burnrate@v0.1.2
 burnrate install
 ```
 

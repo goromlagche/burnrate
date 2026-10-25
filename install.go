@@ -95,6 +95,8 @@ func run(name string, args ...string) error {
 	return cmd.Run()
 }
 
+const usage = "usage: burnrate [--json] [--menubar] | install | uninstall | version"
+
 // subcommand runs install, uninstall or version, and exits on anything else.
 func subcommand(name string) {
 	var err error
@@ -108,7 +110,7 @@ func subcommand(name string) {
 	case "version":
 		fmt.Println(version())
 	default:
-		fmt.Fprintln(os.Stderr, "usage: burnrate [--json] [--menubar] | install | uninstall | version")
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
 	if err != nil {

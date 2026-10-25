@@ -35,7 +35,6 @@ type report struct {
 	Percent   float64 // quota used, if HasQuota
 	HasQuota  bool
 	Stale     bool
-	Window    string     // quota window label: mo, wk, 5h
 	Rows      [][]string // recent days: date, cost[, tokens]
 	MonthCost float64
 	Notes     []string
@@ -69,7 +68,7 @@ func claudeReport(st *State) report {
 		r.Rows = append(r.Rows, []string{k[5:], usd(st.Days[k].ClaudeCost)})
 	}
 	if c := st.Claude; !c.FetchedAt.IsZero() {
-		r.HasQuota, r.Percent, r.Window = true, c.Percent, "mo"
+		r.HasQuota, r.Percent = true, c.Percent
 		r.Stale = time.Since(c.FetchedAt) > apiStale
 		r.Notes = []string{
 			fmt.Sprintf("Monthly cap: %s / %s (%.1f%%)", usd(c.Used), usd(c.Limit), c.Percent),
@@ -90,7 +89,7 @@ func codexReport(st *State) report {
 	}
 	// The bar shows the monthly spend control when the workspace sets one, else the weekly limit.
 	if s := st.Spend; s.Limit > 0 {
-		r.HasQuota, r.Percent, r.Window = true, s.Percent, "mo"
+		r.HasQuota, r.Percent = true, s.Percent
 		r.Stale = time.Since(s.FetchedAt) > apiStale
 		capLine := fmt.Sprintf("Monthly workspace credit usage: %.0f / %.0f (%.0f%%)", s.Used, s.Limit, s.Percent)
 		if rate := cfg.CodexCreditUSD; rate > 0 {
@@ -101,7 +100,7 @@ func codexReport(st *State) report {
 	}
 	if x := st.Codex; !x.SeenAt.IsZero() {
 		if !r.HasQuota {
-			r.HasQuota, r.Percent, r.Window = true, x.UsedPercent, window(x.WindowMinutes)
+			r.HasQuota, r.Percent = true, x.UsedPercent
 		}
 		r.Notes = append(r.Notes,
 			fmt.Sprintf("%s limit: %.0f%% used", window(x.WindowMinutes), x.UsedPercent),
@@ -152,8 +151,7 @@ func (r report) pango() string {
 	out := fmt.Sprintf(`<span foreground="%s" font_family="Symbols Nerd Font Mono">%s</span> `, r.GlyphFG, r.Glyph) +
 		fmt.Sprintf(`<span foreground="%s">%s</span>`, fgText, usd(r.Today))
 	if r.HasQuota {
-		out += fmt.Sprintf(`  <span foreground="%s">%s</span> <span foreground="%s" size="small">%s</span>`,
-			colors[r.level()], r.percentText(), fgDim, r.Window)
+		out += fmt.Sprintf(`  <span foreground="%s">%s</span>`, colors[r.level()], r.percentText())
 	}
 	return out
 }

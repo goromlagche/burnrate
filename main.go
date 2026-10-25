@@ -101,7 +101,8 @@ func main() {
 	menubar := flag.Bool("menubar", false, "print macOS menu bar items as JSON")
 	flag.Parse()
 	if flag.NArg() > 0 {
-		subcommand(flag.Arg(0))
+		fmt.Fprintln(os.Stderr, usage)
+		os.Exit(2)
 	}
 
 	// The timer and a manual refresh can overlap; serialize them on the state file.
