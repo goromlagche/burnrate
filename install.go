@@ -2,11 +2,13 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
@@ -91,4 +93,65 @@ func run(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
+}
+
+// subcommand runs install, uninstall or version, and exits on anything else.
+func subcommand(name string) {
+	var err error
+	switch name {
+	case "install":
+		if err = install(); err == nil {
+			err = check()
+		}
+	case "uninstall":
+		err = uninstall()
+	case "version":
+		fmt.Println(version())
+	default:
+		fmt.Fprintln(os.Stderr, "usage: burnrate [--json] [--menubar] | install | uninstall | version")
+		os.Exit(2)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, name+":", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// version reports the module version, or the commit for a local build.
+func version() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" {
+			return s.Value[:min(len(s.Value), 7)]
+		}
+	}
+	return "devel"
+}
+
+// check runs burnrate once so a broken install shows up now, not in the menu bar.
+func check() error {
+	bin, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	out, err := exec.Command(bin, "--menubar").Output()
+	var items []menubarItem
+	if err == nil {
+		err = json.Unmarshal(out, &items)
+	}
+	if err != nil {
+		return fmt.Errorf("installed, but a test run failed: %w", err)
+	}
+	fmt.Println("installed:")
+	for _, it := range items {
+		fmt.Println(" ", strings.Join(strings.Fields(it.Title), " "))
+	}
+	return nil
 }
