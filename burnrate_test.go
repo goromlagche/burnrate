@@ -92,7 +92,7 @@ func TestScanDedupAndIncremental(t *testing.T) {
 	scanClaude(st, monthStart)
 	scanCodex(st, monthStart)
 	d := st.Days[today]
-	if d == nil || d.ClaudeTokens != 1_000_000 || !near(d.ClaudeCost, 4) {
+	if d == nil || !near(d.ClaudeCost, 4) {
 		t.Fatalf("claude after first scan = %+v", d)
 	}
 	if d.CodexTokens != 100_000 || !near(d.CodexCost, 0.01) {
@@ -104,7 +104,7 @@ func TestScanDedupAndIncremental(t *testing.T) {
 	scanCodex(st, monthStart)
 	writeLog(t, codexLog, tok(2_000_000))
 	scanCodex(st, monthStart)
-	if d.ClaudeTokens != 1_000_000 || d.CodexTokens != 200_000 || !near(d.CodexCost, 0.02) {
+	if !near(d.ClaudeCost, 4) || d.CodexTokens != 200_000 || !near(d.CodexCost, 0.02) {
 		t.Fatalf("after rescan = %+v", d)
 	}
 }

@@ -16,7 +16,6 @@ const (
 	fgWarn   = "#CE9726"
 	fgBad    = "#CE4B4F"
 	fgClaude = "#D97757"
-	fgCodex  = "#ebdbb2"
 )
 
 // Template images for the macOS menu bar, rendered from the Nerd Font glyphs.
@@ -82,7 +81,7 @@ func claudeReport(st *State) report {
 }
 
 func codexReport(st *State) report {
-	r := report{Name: "Codex", Glyph: "", GlyphFG: fgCodex, PNG: pngCodex, Today: todayUsage(st).CodexCost}
+	r := report{Name: "Codex", Glyph: "", GlyphFG: fgText, PNG: pngCodex, Today: todayUsage(st).CodexCost}
 	for _, d := range st.Days {
 		r.MonthCost += d.CodexCost
 	}
@@ -203,8 +202,6 @@ func window(min int64) string {
 		return "5h"
 	case 10080:
 		return "wk"
-	case 43200, 44640:
-		return "mo"
 	}
 	return fmt.Sprintf("%dm", min)
 }

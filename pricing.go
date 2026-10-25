@@ -38,10 +38,6 @@ type claudeUsage struct {
 	Speed string `json:"speed"`
 }
 
-func (u *claudeUsage) tokens() int64 {
-	return u.Input + u.Output + u.CacheCreate + u.CacheRead
-}
-
 // claudePrice finds the rates by prefix. Unknown models, and the <synthetic>
 // placeholders that never reached the API, stay unpriced.
 func claudePrice(model string) (price, bool) {

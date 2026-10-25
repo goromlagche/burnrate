@@ -31,10 +31,9 @@ const (
 )
 
 type Day struct {
-	ClaudeTokens int64   `json:"claude_tokens"`
-	ClaudeCost   float64 `json:"claude_cost"` // estimate at API list prices
-	CodexTokens  int64   `json:"codex_tokens"`
-	CodexCost    float64 `json:"codex_cost"` // estimate at API list prices
+	ClaudeCost  float64 `json:"claude_cost"` // estimate at API list prices
+	CodexTokens int64   `json:"codex_tokens"`
+	CodexCost   float64 `json:"codex_cost"` // estimate at API list prices
 }
 
 type FileState struct {
@@ -56,7 +55,6 @@ type CodexQuota struct {
 	UsedPercent   float64   `json:"used_percent"`
 	WindowMinutes int64     `json:"window_minutes"`
 	ResetsAt      int64     `json:"resets_at"`
-	Plan          string    `json:"plan"`
 	SeenAt        time.Time `json:"seen_at"`
 }
 
@@ -87,12 +85,10 @@ func main() {
 	flag.Parse()
 
 	// SwiftBar runs one process per plugin; serialize them on the state file.
-	unlock, err := lock()
-	if err != nil {
+	if err := lock(); err != nil {
 		fmt.Fprintln(os.Stderr, "lock:", err)
 		os.Exit(1)
 	}
-	defer unlock()
 
 	st := loadState()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
@@ -135,19 +131,16 @@ func main() {
 	}
 }
 
-func lock() (func(), error) {
+// lock holds an exclusive lock on the state until the process exits.
+func lock() error {
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return nil, err
+		return err
 	}
 	f, err := os.OpenFile(filepath.Join(cacheDir, "lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
-		return nil, err
-	}
-	return func() { f.Close() }, nil
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
 }
 
 func loadState() *State {
@@ -279,7 +272,6 @@ func scanClaude(st *State, monthStart time.Time) {
 			}
 			st.Seen[key] = true
 			d := st.day(l.Timestamp)
-			d.ClaudeTokens += l.Message.Usage.tokens()
 			d.ClaudeCost += l.Message.Usage.cost(l.Message.Model)
 		})
 	})
@@ -305,7 +297,6 @@ type codexLine struct {
 				WindowMinutes int64   `json:"window_minutes"`
 				ResetsAt      int64   `json:"resets_at"`
 			} `json:"primary"`
-			PlanType string `json:"plan_type"`
 		} `json:"rate_limits"`
 	} `json:"payload"`
 }
@@ -339,7 +330,6 @@ func scanCodex(st *State, monthStart time.Time) {
 						UsedPercent:   rl.Primary.UsedPercent,
 						WindowMinutes: rl.Primary.WindowMinutes,
 						ResetsAt:      rl.Primary.ResetsAt,
-						Plan:          rl.PlanType,
 						SeenAt:        l.Timestamp,
 					}
 				}
