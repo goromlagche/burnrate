@@ -59,6 +59,17 @@ with no dependencies. It runs `burnrate --menubar` every minute.
 The first run asks for access to the `Claude Code-credentials` Keychain item.
 Choose **Always Allow** to show the monthly quota.
 
+## Config (optional)
+
+`~/.config/burnrate/config.json`:
+
+```json
+{ "codex_credit_usd": 0.04 }
+```
+
+OpenAI reports the Codex spend control in credits. The price of a credit
+depends on your agreement; set it to also show the cap in dollars.
+
 ## Privacy and security
 
 - Everything runs locally except two read-only `GET`s, each every 5 minutes,

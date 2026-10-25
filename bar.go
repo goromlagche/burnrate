@@ -92,8 +92,11 @@ func codexReport(st *State) report {
 	if s := st.Spend; s.Limit > 0 {
 		r.HasQuota, r.Percent, r.Window = true, s.Percent, "mo"
 		r.Stale = time.Since(s.FetchedAt) > apiStale
-		r.Notes = append(r.Notes,
-			fmt.Sprintf("Monthly cap: %.0f / %.0f credits (%.0f%%)", s.Used, s.Limit, s.Percent),
+		capLine := fmt.Sprintf("Monthly cap: %.0f / %.0f credits (%.0f%%)", s.Used, s.Limit, s.Percent)
+		if rate := cfg.CodexCreditUSD; rate > 0 {
+			capLine += fmt.Sprintf(" ≈ %s / %s", usd(s.Used*rate), usd(s.Limit*rate))
+		}
+		r.Notes = append(r.Notes, capLine,
 			"Credits are spent only beyond your plan's included usage",
 			"Resets "+time.Unix(s.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
 	}

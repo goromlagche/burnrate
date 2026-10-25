@@ -85,6 +85,7 @@ type State struct {
 var (
 	home, _  = os.UserHomeDir()
 	cacheDir = filepath.Join(home, ".cache", "burnrate")
+	cfg      = loadConfig()
 	now      = time.Now()
 	today    = now.Format("2006-01-02")
 	month    = now.Format("2006-01")
@@ -139,6 +140,18 @@ func main() {
 }
 
 // lock holds an exclusive lock on the state until the process exits.
+// config is optional, read from ~/.config/burnrate/config.json.
+type config struct {
+	CodexCreditUSD float64 `json:"codex_credit_usd"` // set by your OpenAI agreement
+}
+
+func loadConfig() (c config) {
+	if b, err := os.ReadFile(filepath.Join(home, ".config", "burnrate", "config.json")); err == nil {
+		_ = json.Unmarshal(b, &c)
+	}
+	return c
+}
+
 func lock() error {
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 		return err
