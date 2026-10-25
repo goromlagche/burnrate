@@ -31,7 +31,7 @@ go install github.com/goromlagche/burnrate@latest
 burnrate install
 ```
 
-- **Linux:** starts a systemd user timer that runs every minute. Add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar. Icons need a [Nerd Font](https://www.nerdfonts.com/).
+- **Linux:** starts a systemd user timer that runs every minute. Add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar. Icons need a [Nerd Font](https://www.nerdfonts.com/). For i3status, set `markup = "pango"` and read `~/.cache/burnrate/claude.txt` and `codex.txt`.
 - **macOS:** builds a native menu bar app and starts it at login. Needs `xcode-select --install` once. On the first run, allow access to the `Claude Code-credentials` Keychain item.
 - **Remove:** `burnrate uninstall`.
 
