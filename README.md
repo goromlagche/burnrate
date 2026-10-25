@@ -64,12 +64,12 @@ Remove it with `burnrate uninstall`.
 ## What you see
 
 - **Today's cost**, estimated at API list prices. It is not your bill.
-- **Quota %**: Claude's monthly cap, and Codex's monthly workspace credits (else the weekly limit).
+- **Quota used (%)**: Claude's monthly cap, and Codex's monthly workspace credits. Codex falls back to the weekly limit.
 - **History** on hover or click: the last 7 days and the month total.
 
 ## Privacy and how it works
 
-Reads local Claude Code and Codex logs incrementally and never counts a response twice. Prices are in [`pricing.go`](pricing.go). Output stays in `~/.cache/burnrate/`, readable only by you.
+Reads local Claude Code and Codex logs incrementally. Deduplicates responses across resumed and forked sessions. Prices are in [`pricing.go`](pricing.go). Output stays in `~/.cache/burnrate/`, readable only by you.
 
 <details>
 <summary>Usage API details</summary>
@@ -88,10 +88,10 @@ It never refreshes, stores or logs the tokens. Both endpoints are undocumented a
 `~/.config/burnrate/config.json`:
 
 ```json
-{ "codex_credit_usd": <USD per credit> }
+{ "codex_credit_usd": 0.05 }
 ```
 
-Codex reports credits, not dollars. Set the price of one credit to see the cap in dollars.
+Codex reports credits, not dollars. Set the price of one credit to see the cap in dollars. `0.05` is an example; use your own price.
 
 ## Development
 

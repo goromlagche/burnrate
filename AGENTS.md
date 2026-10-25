@@ -43,8 +43,10 @@ macOS needs no step here.
 Codex reports its monthly cap in credits. Ask the user for the price of one credit. Then write `~/.config/burnrate/config.json`:
 
 ```json
-{ "codex_credit_usd": <USD per credit> }
+{ "codex_credit_usd": 0.05 }
 ```
+
+Replace `0.05` with the price the user gives.
 
 ## 5. Verify
 
