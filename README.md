@@ -18,7 +18,7 @@
       <sub>Linux · Waybar</sub>
     </td>
     <td align="center">
-      <img src="docs/macos-menubar.png" alt="burnrate in the macOS menu bar: Codex $1.03 at 5%, Claude $0.48 at 78%" width="320"><br>
+      <img src="docs/macos-bar.png" alt="burnrate in the macOS menu bar: Codex $1.29 at 5%, Claude $0.88 at 78%" width="320"><br>
       <sub>macOS · menu bar</sub>
     </td>
   </tr>
