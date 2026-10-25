@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <code>✳ $27.89  78% mo</code>&nbsp;&nbsp;&nbsp;<code>◎ $2.35  5% mo</code>
+  <img src="docs/preview.svg" alt="burnrate in the status bar: Claude $27.89, 78% of the monthly cap; Codex $2.35, 5%" width="366">
 </p>
 
 <p align="center">
