@@ -95,7 +95,7 @@ func run(name string, args ...string) error {
 	return cmd.Run()
 }
 
-const usage = "usage: burnrate [--json] [--menubar] | install | uninstall | version"
+const usage = "usage: burnrate [--json] [--menubar] [--text] | install | uninstall | version"
 
 // subcommand runs install, uninstall or version, and exits on anything else.
 func subcommand(name string) {

@@ -110,3 +110,14 @@ func TestScanDedupAndIncremental(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestText(t *testing.T) {
+	r := report{Name: "Claude", Today: 27.894, HasQuota: true, Percent: 78}
+	if got := r.text(); got != "Claude $27.89 78%" {
+		t.Fatalf("text = %q", got)
+	}
+	r.HasQuota = false
+	if got := r.text(); got != "Claude $27.89" {
+		t.Fatalf("text without quota = %q", got)
+	}
+}

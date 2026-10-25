@@ -146,6 +146,15 @@ func (r report) table() []string {
 	return append(lines, fmt.Sprintf("%-5s  %9s", "month", usd(r.MonthCost)))
 }
 
+// text is the plain line for launchers: "Claude $27.89 78%".
+func (r report) text() string {
+	s := r.Name + " " + usd(r.Today)
+	if r.HasQuota {
+		s += " " + r.percentText()
+	}
+	return s
+}
+
 // pango renders the bar text for Waybar and i3status (markup = pango).
 func (r report) pango() string {
 	colors := map[string]string{"ok": fgGood, "warn": fgWarn, "crit": fgBad, "stale": fgDim}

@@ -48,7 +48,11 @@ Codex reports its monthly cap in credits. Ask the user for the price of one cred
 
 Replace `0.05` with the price the user gives.
 
-## 5. Verify
+## 5. Optional: Vorssaint (macOS)
+
+If the user runs [Vorssaint](https://github.com/vorssaint/vorssaint-utils), offer the Command Bar setup from the README section "Vorssaint Command Bar". Create the wrapper. Tell the user to add the script in Vorssaint; do not edit Vorssaint's settings yourself.
+
+## 6. Verify
 
 ```sh
 "$(go env GOPATH)/bin/burnrate" --json | head -20

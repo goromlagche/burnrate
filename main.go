@@ -99,6 +99,7 @@ func main() {
 
 	jsonOut := flag.Bool("json", false, "print full state as JSON")
 	menubar := flag.Bool("menubar", false, "print macOS menu bar items as JSON")
+	text := flag.Bool("text", false, "print one line, e.g. for a launcher")
 	flag.Parse()
 	if flag.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, usage)
@@ -133,6 +134,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "write bar:", err)
 			os.Exit(1)
 		}
+	}
+
+	if *text {
+		fmt.Println(reports["claude"].text() + " · " + reports["codex"].text())
 	}
 
 	if *menubar {
