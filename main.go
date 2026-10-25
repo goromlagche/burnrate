@@ -1,8 +1,8 @@
 // burnrate shows daily Claude/Codex usage and quota in the status bar.
 //
 // It runs once and exits. On Linux a systemd user timer runs it every minute
-// and Waybar (or i3status) reads the files it writes. On macOS SwiftBar runs
-// it with --swiftbar and shows stdout in the menu bar.
+// and Waybar (or i3status) reads the files it writes. On macOS BurnrateBar runs
+// it with --menubar and shows the items in the menu bar.
 package main
 
 import (
@@ -81,10 +81,10 @@ var (
 
 func main() {
 	jsonOut := flag.Bool("json", false, "print full state as JSON")
-	swiftbar := flag.String("swiftbar", "", "print a SwiftBar plugin for claude or codex")
+	menubar := flag.Bool("menubar", false, "print macOS menu bar items as JSON")
 	flag.Parse()
 
-	// SwiftBar runs one process per plugin; serialize them on the state file.
+	// The timer and a manual refresh can overlap; serialize them on the state file.
 	if err := lock(); err != nil {
 		fmt.Fprintln(os.Stderr, "lock:", err)
 		os.Exit(1)
@@ -114,13 +114,9 @@ func main() {
 		}
 	}
 
-	if *swiftbar != "" {
-		r, ok := reports[*swiftbar]
-		if !ok {
-			fmt.Fprintln(os.Stderr, "--swiftbar takes claude or codex")
-			os.Exit(2)
-		}
-		fmt.Print(r.swiftbar())
+	if *menubar {
+		out, _ := json.Marshal([]menubarItem{reports["claude"].menubar(), reports["codex"].menubar()})
+		fmt.Println(string(out))
 	}
 
 	if *jsonOut {

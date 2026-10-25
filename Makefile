@@ -1,6 +1,6 @@
 BIN := $(HOME)/.local/bin/burnrate
 UNITS := $(HOME)/.config/systemd/user
-SWIFTBAR := $(shell defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null)
+AGENT := $(HOME)/Library/LaunchAgents/burnrate.plist
 
 # Installed files are symlinks back into this checkout.
 build:
@@ -23,14 +23,17 @@ uninstall-linux:
 	rm -f $(BIN) $(UNITS)/burnrate.service $(UNITS)/burnrate.timer
 	systemctl --user daemon-reload
 
+# Needs Xcode Command Line Tools for swiftc.
 install-macos: build
-	@test -n "$(SWIFTBAR)" || { echo "Open SwiftBar once and pick a plugin folder first."; exit 1; }
-	mkdir -p $(dir $(BIN))
+	swiftc -O contrib/macos/BurnrateBar.swift -o burnrate-bar
+	mkdir -p $(dir $(BIN)) $(dir $(AGENT))
 	ln -sfn $(CURDIR)/burnrate $(BIN)
-	ln -sfn $(CURDIR)/contrib/macos/burnrate-claude.1m.sh "$(SWIFTBAR)/burnrate-claude.1m.sh"
-	ln -sfn $(CURDIR)/contrib/macos/burnrate-codex.1m.sh "$(SWIFTBAR)/burnrate-codex.1m.sh"
+	sed 's|@BAR@|$(CURDIR)/burnrate-bar|' contrib/macos/burnrate.plist > $(AGENT)
+	-launchctl bootout gui/$$(id -u) $(AGENT) 2>/dev/null
+	launchctl bootstrap gui/$$(id -u) $(AGENT)
 
 uninstall-macos:
-	rm -f $(BIN) "$(SWIFTBAR)/burnrate-claude.1m.sh" "$(SWIFTBAR)/burnrate-codex.1m.sh"
+	-launchctl bootout gui/$$(id -u) $(AGENT)
+	rm -f $(BIN) $(AGENT)
 
 .PHONY: build test install-linux uninstall-linux install-macos uninstall-macos

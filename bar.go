@@ -2,7 +2,6 @@ package main
 
 import (
 	_ "embed"
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -31,7 +30,7 @@ type report struct {
 	Name      string
 	Glyph     string // Nerd Font icon for Linux bars
 	GlyphFG   string
-	PNG       []byte // template icon for SwiftBar
+	PNG       []byte // template icon for the macOS menu bar
 	Today     float64
 	Percent   float64 // quota used, if HasQuota
 	HasQuota  bool
@@ -162,34 +161,30 @@ func (r report) waybar() waybarBlock {
 	return waybarBlock{Text: r.pango(), Tooltip: tip, Class: r.level()}
 }
 
-// swiftbar renders a SwiftBar/xbar plugin: title line, then the dropdown.
-func (r report) swiftbar() string {
-	title := usd(r.Today)
+// menubarItem is one macOS menu bar item for contrib/macos/BurnrateBar.swift.
+type menubarItem struct {
+	Title string   `json:"title"`
+	Color string   `json:"color,omitempty"`
+	Icon  []byte   `json:"icon"`  // template PNG
+	Lines []string `json:"lines"` // "---" is a separator
+}
+
+func (r report) menubar() menubarItem {
+	m := menubarItem{Title: usd(r.Today), Icon: r.PNG}
 	if r.HasQuota {
-		title += "  " + r.percentText()
+		m.Title += "  " + r.percentText()
 	}
-	params := "templateImage=" + base64.StdEncoding.EncodeToString(r.PNG)
 	switch r.level() {
 	case "warn":
-		params += " color=" + fgWarn
+		m.Color = fgWarn
 	case "crit":
-		params += " color=" + fgBad
+		m.Color = fgBad
 	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s | %s\n---\n", title, params)
-	fmt.Fprintf(&b, "%s (estimate at API prices)\n", r.Name)
-	for _, line := range r.table() {
-		fmt.Fprintf(&b, "%s | font=Menlo size=12\n", line)
-	}
+	m.Lines = append([]string{r.Name + " (estimate at API prices)"}, r.table()...)
 	if len(r.Notes) > 0 {
-		b.WriteString("---\n")
-		for _, n := range r.Notes {
-			fmt.Fprintln(&b, n)
-		}
+		m.Lines = append(append(m.Lines, "---"), r.Notes...)
 	}
-	b.WriteString("---\nRefresh | refresh=true\n")
-	return b.String()
+	return m
 }
 
 func usd(v float64) string {

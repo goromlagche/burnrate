@@ -49,9 +49,12 @@ For i3status, enable `markup = "pango"` and add a `read_file` block pointing at
 ### macOS (menu bar)
 
 ```sh
-brew install --cask swiftbar   # open it once and pick a plugin folder
-make install-macos             # symlinks the binary and two SwiftBar plugins
+xcode-select --install   # once, for swiftc
+make install-macos       # builds the menu bar app and starts it at login
 ```
+
+[`BurnrateBar.swift`](contrib/macos/BurnrateBar.swift) is a small native app
+with no dependencies. It runs `burnrate --menubar` every minute.
 
 The first run asks for access to the `Claude Code-credentials` Keychain item.
 Choose **Always Allow** to show the monthly quota.
@@ -69,7 +72,7 @@ Choose **Always Allow** to show the monthly quota.
 ```sh
 make test
 go run . --json          # full state
-go run . --swiftbar claude
+go run . --menubar
 ```
 
 Claude, Codex and OpenAI are trademarks of their owners. The icons come from
