@@ -1,0 +1,15 @@
+// Add to your Waybar config, then put "custom/claude" and "custom/codex" in a modules list.
+{
+  "custom/claude": {
+    "exec": "cat ~/.cache/burnrate/claude.json",
+    "return-type": "json",
+    "interval": 30,
+    "on-click": "systemctl --user start burnrate.service"
+  },
+  "custom/codex": {
+    "exec": "cat ~/.cache/burnrate/codex.json",
+    "return-type": "json",
+    "interval": 30,
+    "on-click": "systemctl --user start burnrate.service"
+  }
+}

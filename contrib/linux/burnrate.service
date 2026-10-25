@@ -1,0 +1,7 @@
+[Unit]
+Description=Write Claude/Codex usage for the status bar
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/burnrate
+Nice=10
