@@ -1,70 +1,97 @@
 <h1 align="center">burnrate</h1>
 
 <p align="center">
-  Today's <b>Claude Code</b> and <b>Codex</b> spend, and your quota, in the status bar.
+  Track <b>Claude Code</b> and <b>Codex</b> usage from your status bar.<br>
+  Today's estimated cost, quota usage and recent history, always visible.
 </p>
 
 <p align="center">
-  <img src="docs/waybar.svg" alt="burnrate in Waybar: Claude $27.89 at 78% of the monthly cap, Codex $2.35 at 5%" width="320">
-  &nbsp;
-  <img src="docs/macos-menubar.png" alt="burnrate in the macOS menu bar: Codex $1.03 at 5%, Claude $0.48 at 78%" width="320">
+  <a href="https://github.com/goromlagche/burnrate/releases"><img src="https://img.shields.io/github/v/tag/goromlagche/burnrate?label=release" alt="release"></a>
+  <a href="https://pkg.go.dev/github.com/goromlagche/burnrate"><img src="https://pkg.go.dev/badge/github.com/goromlagche/burnrate.svg" alt="Go reference"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/goromlagche/burnrate" alt="MIT license"></a>
 </p>
 
-<p align="center">
-  Waybar · i3status · macOS menu bar
-</p>
-
----
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="docs/waybar.svg" alt="burnrate in Waybar: Claude $27.89 at 78% of the monthly cap, Codex $2.35 at 5%" width="320"><br>
+      <sub>Linux · Waybar</sub>
+    </td>
+    <td align="center">
+      <img src="docs/macos-menubar.png" alt="burnrate in the macOS menu bar: Codex $1.03 at 5%, Claude $0.48 at 78%" width="320"><br>
+      <sub>macOS · menu bar</sub>
+    </td>
+  </tr>
+</table>
 
 ## Install
 
+Requires Go 1.22 or later.
+
+**Linux**
+
 ```sh
-go install github.com/goromlagche/burnrate@v0.1.2
+go install github.com/goromlagche/burnrate@v0.1.3
 burnrate install
 ```
 
-| | `burnrate install` does | You do once |
-|---|---|---|
-| **Linux** | Starts a systemd timer. It runs every minute. | Add [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar. Use a [Nerd Font](https://www.nerdfonts.com/). |
-| **macOS** | Builds a menu bar app. It starts at login. | Run `xcode-select --install`. Allow Keychain access on the first run. |
+- Starts a systemd user timer. It runs every minute.
+- Add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar.
+- The icons need a [Nerd Font](https://www.nerdfonts.com/).
 
-For i3status, set `markup = "pango"` and read `~/.cache/burnrate/claude.txt` and `codex.txt`.
+<details>
+<summary>i3status instead of Waybar</summary>
 
-Remove it with `burnrate uninstall`. Go 1.22 or later.
+Set `markup = "pango"` in `general`. Add `read_file` blocks for `~/.cache/burnrate/claude.txt` and `codex.txt`, with absolute paths.
+
+</details>
+
+**macOS**
+
+```sh
+xcode-select --install   # once, to build the menu bar app
+go install github.com/goromlagche/burnrate@v0.1.3
+burnrate install
+```
+
+- Builds a native menu bar app. It starts at login.
+- On the first run, allow access to the `Claude Code-credentials` Keychain item.
+
+Remove it with `burnrate uninstall`.
 
 > **Using a coding agent?** Tell it: *"Install burnrate from github.com/goromlagche/burnrate."* It follows [`AGENTS.md`](AGENTS.md).
 
 ## What you see
 
-- **Today's spend**, priced at API list prices.
+- **Today's cost**, estimated at API list prices. It is not your bill.
 - **Quota %**: Claude's monthly cap, and Codex's monthly workspace credits (else the weekly limit).
 - **History** on hover or click: the last 7 days and the month total.
 
-## How it works
+## Privacy and how it works
 
-- Reads `~/.claude/projects` and `~/.codex/sessions`. It reads only new lines, so a run takes milliseconds.
-- Counts each response once, across repeats, resumed sessions and forked sessions.
-- Gets the quota from the endpoints that Claude Code's `/usage` and Codex's `/status` use.
-- Dollar figures are estimates, not your bill. Prices are in [`pricing.go`](pricing.go).
+Reads local Claude Code and Codex logs incrementally and never counts a response twice. Prices are in [`pricing.go`](pricing.go). Output stays in `~/.cache/burnrate/`, readable only by you.
 
-## Config
+<details>
+<summary>Usage API details</summary>
 
-Optional, in `~/.config/burnrate/config.json`:
+Every 5 minutes, burnrate sends two read-only requests with the logins you already have:
+
+- `api.anthropic.com/api/oauth/usage`, the endpoint that Claude Code's `/usage` uses
+- `chatgpt.com/backend-api/wham/usage`, the endpoint that Codex's `/status` uses
+
+It never refreshes, stores or logs the tokens. Both endpoints are undocumented and can change.
+
+</details>
+
+## Optional configuration
+
+`~/.config/burnrate/config.json`:
 
 ```json
 { "codex_credit_usd": <USD per credit> }
 ```
 
 Codex reports credits, not dollars. Set the price of one credit to see the cap in dollars.
-
-## Privacy
-
-- Two read-only requests every 5 minutes, with the logins you already have:
-  - `api.anthropic.com/api/oauth/usage`
-  - `chatgpt.com/backend-api/wham/usage`
-- Tokens are never refreshed, stored or logged.
-- Both endpoints are undocumented and can change.
-- Output stays in `~/.cache/burnrate/`, readable only by you.
 
 ## Development
 
