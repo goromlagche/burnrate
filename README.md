@@ -6,8 +6,8 @@
 
 <p align="center">
   <img src="docs/preview.svg" alt="burnrate in Waybar: Claude $27.89 at 78% of the monthly cap, Codex $2.35 at 5%" width="320">
-  &nbsp;&nbsp;
-  <img src="docs/macos.png" alt="burnrate in the macOS menu bar: Codex $1.03 at 5%, Claude $0.48 at 78%" width="230">
+  &nbsp;
+  <img src="docs/macos.png" alt="burnrate in the macOS menu bar: Codex $1.03 at 5%, Claude $0.48 at 78%" width="320">
 </p>
 
 <p align="center">
