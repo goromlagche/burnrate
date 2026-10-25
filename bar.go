@@ -30,6 +30,7 @@ type report struct {
 	Name      string
 	Glyph     string // Nerd Font icon for Linux bars
 	GlyphFG   string
+	Tint      string // macOS icon color; empty keeps a monochrome template icon
 	PNG       []byte // template icon for the macOS menu bar
 	Today     float64
 	Percent   float64 // quota used, if HasQuota
@@ -60,7 +61,7 @@ func recentDays(st *State, n int) []string {
 }
 
 func claudeReport(st *State) report {
-	r := report{Name: "Claude", Glyph: "", GlyphFG: fgClaude, PNG: pngClaude, Today: todayUsage(st).ClaudeCost}
+	r := report{Name: "Claude", Glyph: "", GlyphFG: fgClaude, Tint: fgClaude, PNG: pngClaude, Today: todayUsage(st).ClaudeCost}
 	for _, d := range st.Days {
 		r.MonthCost += d.ClaudeCost
 	}
@@ -175,12 +176,13 @@ func (r report) waybar() waybarBlock {
 type menubarItem struct {
 	Title string   `json:"title"`
 	Color string   `json:"color,omitempty"`
-	Icon  []byte   `json:"icon"`  // template PNG
+	Icon  []byte   `json:"icon"` // black PNG on transparent
+	Tint  string   `json:"tint,omitempty"`
 	Lines []string `json:"lines"` // "---" is a separator
 }
 
 func (r report) menubar() menubarItem {
-	m := menubarItem{Title: usd(r.Today), Icon: r.PNG}
+	m := menubarItem{Title: usd(r.Today), Icon: r.PNG, Tint: r.Tint}
 	if r.HasQuota {
 		m.Title += "  " + r.percentText()
 	}

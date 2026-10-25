@@ -6,6 +6,7 @@ struct Item: Decodable {
     let title: String
     let color: String?
     let icon: Data
+    let tint: String?
     let lines: [String]
 }
 
@@ -39,9 +40,13 @@ final class BurnrateBar: NSObject, NSApplicationDelegate {
             statusItems.append(NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength))
         }
         for (statusItem, item) in zip(statusItems, items) {
-            let image = NSImage(data: item.icon)
-            image?.isTemplate = true
+            var image = NSImage(data: item.icon)
             image?.size = NSSize(width: 16, height: 16)
+            if let base = image, let tint = item.tint.flatMap(nsColor) {
+                image = tinted(base, tint)
+            } else {
+                image?.isTemplate = true
+            }
             statusItem.button?.image = image
             statusItem.button?.imagePosition = .imageLeading
 
@@ -65,6 +70,16 @@ final class BurnrateBar: NSObject, NSApplicationDelegate {
             menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             statusItem.menu = menu
         }
+    }
+}
+
+// tinted paints the icon's shape in one color, like a template image but not monochrome.
+func tinted(_ image: NSImage, _ color: NSColor) -> NSImage {
+    NSImage(size: image.size, flipped: false) { rect in
+        image.draw(in: rect)
+        color.set()
+        rect.fill(using: .sourceAtop)
+        return true
     }
 }
 
