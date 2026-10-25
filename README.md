@@ -64,11 +64,12 @@ Choose **Always Allow** to show the monthly quota.
 `~/.config/burnrate/config.json`:
 
 ```json
-{ "codex_credit_usd": 0.04 }
+{ "codex_credit_usd": <USD per credit> }
 ```
 
-OpenAI reports the Codex spend control in credits. The price of a credit
-depends on your agreement; set it to also show the cap in dollars.
+OpenAI reports the Codex spend control in credits. The price of one credit
+depends on your plan or agreement: divide what you pay by the credits you get.
+Set it to also show the cap in dollars. Leave it out to show credits only.
 
 ## Privacy and security
 
