@@ -94,6 +94,7 @@ func codexReport(st *State) report {
 		r.Stale = time.Since(s.FetchedAt) > apiStale
 		r.Notes = append(r.Notes,
 			fmt.Sprintf("Monthly cap: %.0f / %.0f credits (%.0f%%)", s.Used, s.Limit, s.Percent),
+			"Credits are spent only beyond your plan's included usage",
 			"Resets "+time.Unix(s.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
 	}
 	if x := st.Codex; !x.SeenAt.IsZero() {
