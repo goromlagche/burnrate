@@ -101,26 +101,6 @@ It never refreshes, stores or logs the tokens. Both endpoints are undocumented a
 
 Codex reports credits, not dollars. Set the price of one credit to see the cap in dollars. `0.05` is an example; use your own price.
 
-## Vorssaint Command Bar
-
-Show burnrate in the [Vorssaint](https://github.com/vorssaint/vorssaint-utils) Command Bar.
-
-1. Create a small wrapper. It runs `burnrate --text` and ignores what you type:
-
-   ```sh
-   mkdir -p ~/.local/bin
-   printf '#!/bin/sh\nexec "%s" --text\n' "$(command -v burnrate)" > ~/.local/bin/burnrate-text
-   chmod +x ~/.local/bin/burnrate-text
-   ```
-
-2. In Vorssaint, add a Command Bar script. Name it `burn`. Set the destination to `~/.local/bin/burnrate-text`. Turn on running without an argument.
-
-3. Type `burn` in the Command Bar:
-
-   ```
-   Claude $27.89 78% · Codex $5.27 5%
-   ```
-
 ## Development
 
 ```sh

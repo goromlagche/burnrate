@@ -50,7 +50,23 @@ Replace `0.05` with the price the user gives.
 
 ## 5. Optional: Vorssaint (macOS)
 
-If the user runs [Vorssaint](https://github.com/vorssaint/vorssaint-utils), offer the Command Bar setup from the README section "Vorssaint Command Bar". Create the wrapper. Tell the user to add the script in Vorssaint; do not edit Vorssaint's settings yourself.
+If the user runs [Vorssaint](https://github.com/vorssaint/vorssaint-utils), offer to show burnrate in its Command Bar.
+
+Create a wrapper. Vorssaint passes what the user types as an argument; the wrapper ignores it and runs `burnrate --text`:
+
+```sh
+mkdir -p ~/.local/bin
+printf '#!/bin/sh\nexec "%s" --text\n' "$(command -v burnrate || echo "$(go env GOPATH)/bin/burnrate")" > ~/.local/bin/burnrate-text
+chmod +x ~/.local/bin/burnrate-text
+~/.local/bin/burnrate-text ""   # prints: Claude $27.89 78% · Codex $5.27 5%
+```
+
+Then tell the user to add it in Vorssaint. Do not edit Vorssaint's settings yourself:
+
+1. Add a Command Bar script named `burn`.
+2. Set the destination to `~/.local/bin/burnrate-text`.
+3. Turn on running without an argument.
+4. Type `burn` in the Command Bar.
 
 ## 6. Verify
 
