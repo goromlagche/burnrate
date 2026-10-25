@@ -1,5 +1,5 @@
 // BurnrateBar shows `burnrate --menubar` as macOS menu bar items.
-// Build: swiftc -O contrib/macos/BurnrateBar.swift -o burnrate-bar
+// burnrate install builds it with swiftc and starts it at login.
 import AppKit
 
 struct Item: Decodable {

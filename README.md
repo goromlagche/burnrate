@@ -27,32 +27,13 @@
 Requires Go 1.22 or later.
 
 ```sh
-git clone https://github.com/goromlagche/burnrate && cd burnrate
-```
-
-**Linux.** Installs a systemd user timer that runs every minute.
-
-```sh
-make install-linux
-```
-
-Add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar. Icons need a [Nerd Font](https://www.nerdfonts.com/). For i3status, set `markup = "pango"` and read `~/.cache/burnrate/claude.txt` and `codex.txt`.
-
-**macOS.** Builds a native menu bar app and starts it at login.
-
-```sh
-xcode-select --install   # once
-make install-macos
-```
-
-On the first run, allow access to the `Claude Code-credentials` Keychain item.
-
-**CLI only.**
-
-```sh
 go install github.com/goromlagche/burnrate@latest
-burnrate --json
+burnrate install
 ```
+
+- **Linux:** starts a systemd user timer that runs every minute. Add the modules from [`contrib/waybar/config.jsonc`](contrib/waybar/config.jsonc) to Waybar. Icons need a [Nerd Font](https://www.nerdfonts.com/).
+- **macOS:** builds a native menu bar app and starts it at login. Needs `xcode-select --install` once. On the first run, allow access to the `Claude Code-credentials` Keychain item.
+- **Remove:** `burnrate uninstall`.
 
 ## How it works
 
@@ -89,6 +70,7 @@ OpenAI reports Codex credits, not dollars. Divide what you pay by the credits yo
 
 ```sh
 make test
+make install   # build from this checkout and install
 go run . --json
 ```
 

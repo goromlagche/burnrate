@@ -92,6 +92,18 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "install" || os.Args[1] == "uninstall") {
+		step := install
+		if os.Args[1] == "uninstall" {
+			step = uninstall
+		}
+		if err := step(); err != nil {
+			fmt.Fprintln(os.Stderr, os.Args[1]+":", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	jsonOut := flag.Bool("json", false, "print full state as JSON")
 	menubar := flag.Bool("menubar", false, "print macOS menu bar items as JSON")
 	flag.Parse()
