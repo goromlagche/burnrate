@@ -32,6 +32,8 @@ For i3status, set `markup = "pango"` and read `~/.cache/burnrate/claude.txt` and
 
 Remove it with `burnrate uninstall`. Go 1.22 or later.
 
+> **Using a coding agent?** Tell it: *"Install burnrate from github.com/goromlagche/burnrate."* It follows [`AGENTS.md`](AGENTS.md).
+
 ## What you see
 
 - **Today's spend**, priced at API list prices.
