@@ -133,7 +133,7 @@ func main() {
 
 	if *jsonOut {
 		out, _ := json.MarshalIndent(map[string]any{
-			"days": st.Days, "claude": st.Claude, "codex": st.Codex,
+			"days": st.Days, "claude": st.Claude, "codex": st.Codex, "codex_spend": st.Spend,
 		}, "", "  ")
 		fmt.Println(string(out))
 	}
