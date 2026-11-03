@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -119,5 +120,31 @@ func TestText(t *testing.T) {
 	r.HasQuota = false
 	if got := r.text(); got != "Claude $27.89" {
 		t.Fatalf("text without quota = %q", got)
+	}
+}
+
+func TestClaudeQuota(t *testing.T) {
+	body := `{
+		"limits": [
+			{"kind": "session", "percent": 1, "resets_at": "2026-11-03T21:20:00.223799+00:00"},
+			{"kind": "weekly_all", "percent": 5, "resets_at": "2026-11-10T05:00:00+00:00"},
+			{"kind": "weekly_scoped", "percent": 0, "scope": {"model": {"display_name": "Fable"}}}
+		],
+		"extra_usage": {"monthly_limit": 50000, "used_credits": 1000, "utilization": null, "decimal_places": 2}
+	}`
+	var b claudeUsageBody
+	if err := json.Unmarshal([]byte(body), &b); err != nil {
+		t.Fatal(err)
+	}
+	st := &State{Days: map[string]*Day{}}
+	if err := b.apply(&st.Claude); err != nil {
+		t.Fatal(err)
+	}
+	c := st.Claude
+	if len(c.Limits) != 3 || c.Limits[2].Name != "Weekly (Fable)" || !near(c.Used, 10) || !near(c.Percent, 2) {
+		t.Fatalf("quota = %+v", c)
+	}
+	if r := claudeReport(st); !near(r.Percent, 5) {
+		t.Fatalf("bar percent = %v, want 5 (the fullest limit)", r.Percent)
 	}
 }

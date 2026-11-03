@@ -68,15 +68,28 @@ func claudeReport(st *State) report {
 	for _, k := range recentDays(st, 7) {
 		r.Rows = append(r.Rows, []string{k[5:], usd(st.Days[k].ClaudeCost)})
 	}
+	// The bar shows the fullest of the plan limits and the usage credits.
 	if c := st.Claude; !c.FetchedAt.IsZero() {
 		r.HasQuota, r.Percent = true, c.Percent
 		r.Stale = time.Since(c.FetchedAt) > apiStale
-		r.Notes = []string{
-			fmt.Sprintf("Monthly cap: %s / %s (%.1f%%)", usd(c.Used), usd(c.Limit), c.Percent),
-			"Updated " + c.FetchedAt.Local().Format("15:04"),
+		for _, l := range c.Limits {
+			r.Percent = max(r.Percent, l.Percent)
+			r.Notes = append(r.Notes, limitNote(l.Name, l.Percent, l.ResetsAt))
 		}
+		if c.Limit > 0 {
+			r.Notes = append(r.Notes, fmt.Sprintf("Usage credits: %s / %s (%.1f%%)", usd(c.Used), usd(c.Limit), c.Percent))
+		}
+		r.Notes = append(r.Notes, "Updated "+c.FetchedAt.Local().Format("15:04"))
 	}
 	return r
+}
+
+func limitNote(name string, percent float64, resetsAt time.Time) string {
+	s := fmt.Sprintf("%s: %.0f%% used", name, percent)
+	if !resetsAt.IsZero() {
+		s += ", resets " + resetsAt.Round(time.Minute).Local().Format("Mon 15:04")
+	}
+	return s
 }
 
 func codexReport(st *State) report {
@@ -88,7 +101,7 @@ func codexReport(st *State) report {
 		d := st.Days[k]
 		r.Rows = append(r.Rows, []string{k[5:], usd(d.CodexCost), humanTokens(d.CodexTokens)})
 	}
-	// The bar shows the monthly spend control when the workspace sets one, else the weekly limit.
+	// The bar shows the fuller of the monthly spend control and the plan limit.
 	if s := st.Spend; s.Limit > 0 {
 		r.HasQuota, r.Percent = true, s.Percent
 		r.Stale = time.Since(s.FetchedAt) > apiStale
@@ -100,12 +113,8 @@ func codexReport(st *State) report {
 			"Resets "+time.Unix(s.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
 	}
 	if x := st.Codex; !x.SeenAt.IsZero() {
-		if !r.HasQuota {
-			r.HasQuota, r.Percent = true, x.UsedPercent
-		}
-		r.Notes = append(r.Notes,
-			fmt.Sprintf("%s limit: %.0f%% used", window(x.WindowMinutes), x.UsedPercent),
-			"Resets "+time.Unix(x.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
+		r.HasQuota, r.Percent = true, max(r.Percent, x.UsedPercent)
+		r.Notes = append(r.Notes, limitNote(window(x.WindowMinutes), x.UsedPercent, time.Unix(x.ResetsAt, 0)))
 	}
 	return r
 }
@@ -215,11 +224,11 @@ func usd(v float64) string {
 func window(min int64) string {
 	switch min {
 	case 300:
-		return "5h"
+		return "Session"
 	case 10080:
-		return "wk"
+		return "Weekly"
 	}
-	return fmt.Sprintf("%dm", min)
+	return fmt.Sprintf("%dm limit", min)
 }
 
 func humanTokens(n int64) string {

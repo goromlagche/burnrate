@@ -41,7 +41,7 @@ Requires Go 1.22 or later.
 **Linux**
 
 ```sh
-go install github.com/goromlagche/burnrate@v0.1.5
+go install github.com/goromlagche/burnrate@v0.1.6
 burnrate install
 ```
 
@@ -60,7 +60,7 @@ Set `markup = "pango"` in `general`. Add `read_file` blocks for `~/.cache/burnra
 
 ```sh
 xcode-select --install   # once, to build the menu bar app
-go install github.com/goromlagche/burnrate@v0.1.5
+go install github.com/goromlagche/burnrate@v0.1.6
 burnrate install
 ```
 
@@ -72,7 +72,7 @@ Remove it with `burnrate uninstall`.
 ## What you see
 
 - **Today's cost**, estimated at API list prices. It is not your bill.
-- **Quota used (%)**: Claude's monthly cap, and Codex's monthly workspace credits. Codex falls back to the weekly limit.
+- **Quota used (%)**: the fullest of your plan limits (session, weekly) and your usage credits, for Claude and for Codex. Hover or click to see each limit.
 - **History** on hover or click: the last 7 days and the month total.
 
 ## Privacy and how it works

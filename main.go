@@ -45,11 +45,20 @@ type FileState struct {
 	Priority bool   `json:"priority,omitempty"`
 }
 
+// ClaudeQuota holds the plan limits and the usage credits that cover use past them.
 type ClaudeQuota struct {
-	Used      float64   `json:"used"` // USD
-	Limit     float64   `json:"limit"`
-	Percent   float64   `json:"percent"`
-	FetchedAt time.Time `json:"fetched_at"`
+	Limits    []PlanLimit `json:"limits"`
+	Used      float64     `json:"used"` // usage credits, USD
+	Limit     float64     `json:"limit"`
+	Percent   float64     `json:"percent"`
+	FetchedAt time.Time   `json:"fetched_at"`
+}
+
+// PlanLimit is one session or weekly limit, as the Claude usage settings page shows it.
+type PlanLimit struct {
+	Name     string    `json:"name"`
+	Percent  float64   `json:"percent"`
+	ResetsAt time.Time `json:"resets_at"`
 }
 
 type CodexQuota struct {
@@ -499,14 +508,7 @@ func fetchClaudeAPI(q *ClaudeQuota) error {
 		return fmt.Errorf("no valid token; run claude once to refresh")
 	}
 
-	var body struct {
-		Extra *struct {
-			MonthlyLimit float64 `json:"monthly_limit"`
-			UsedCredits  float64 `json:"used_credits"`
-			Utilization  float64 `json:"utilization"`
-			Decimals     int     `json:"decimal_places"`
-		} `json:"extra_usage"`
-	}
+	var body claudeUsageBody
 	err = getJSON(claudeUsageURL, map[string]string{
 		"Authorization":  "Bearer " + creds.OAuth.AccessToken,
 		"anthropic-beta": "oauth-2025-04-20",
@@ -514,16 +516,57 @@ func fetchClaudeAPI(q *ClaudeQuota) error {
 	if err != nil {
 		return err
 	}
-	if body.Extra == nil {
-		return fmt.Errorf("no extra_usage in response")
+	return body.apply(q)
+}
+
+type claudeUsageBody struct {
+	Limits []struct {
+		Kind     string    `json:"kind"`
+		Percent  float64   `json:"percent"`
+		ResetsAt time.Time `json:"resets_at"`
+		Scope    *struct {
+			Model *struct {
+				DisplayName string `json:"display_name"`
+			} `json:"model"`
+		} `json:"scope"`
+	} `json:"limits"`
+	Extra *struct {
+		MonthlyLimit float64  `json:"monthly_limit"`
+		UsedCredits  float64  `json:"used_credits"`
+		Utilization  *float64 `json:"utilization"`
+		Decimals     int      `json:"decimal_places"`
+	} `json:"extra_usage"`
+}
+
+func (b claudeUsageBody) apply(q *ClaudeQuota) error {
+	if len(b.Limits) == 0 && b.Extra == nil {
+		return fmt.Errorf("no limits or extra_usage in response")
 	}
-	div := 1.0
-	for range body.Extra.Decimals {
-		div *= 10
+	*q = ClaudeQuota{FetchedAt: now}
+	for _, l := range b.Limits {
+		name := l.Kind
+		switch {
+		case l.Kind == "session":
+			name = "Session"
+		case l.Kind == "weekly_all":
+			name = "Weekly"
+		case l.Scope != nil && l.Scope.Model != nil && l.Scope.Model.DisplayName != "":
+			name = "Weekly (" + l.Scope.Model.DisplayName + ")"
+		}
+		q.Limits = append(q.Limits, PlanLimit{Name: name, Percent: l.Percent, ResetsAt: l.ResetsAt})
 	}
-	q.Used = body.Extra.UsedCredits / div
-	q.Limit = body.Extra.MonthlyLimit / div
-	q.Percent = body.Extra.Utilization
-	q.FetchedAt = now
+	if x := b.Extra; x != nil {
+		div := 1.0
+		for range x.Decimals {
+			div *= 10
+		}
+		q.Used, q.Limit = x.UsedCredits/div, x.MonthlyLimit/div
+		switch {
+		case x.Utilization != nil:
+			q.Percent = *x.Utilization
+		case q.Limit > 0:
+			q.Percent = 100 * q.Used / q.Limit
+		}
+	}
 	return nil
 }
