@@ -26,6 +26,10 @@ func TestClaudeCost(t *testing.T) {
 	if got := u.cost("claude-opus-5-5"); !near(got, 74.4) {
 		t.Fatalf("fast cost = %v, want 74.4", got)
 	}
+	// fable-5-2 must not fall through to the older, pricier claude-fable-5 entry.
+	if p, _ := claudePrice("claude-fable-5-2"); p != (price{8, 40, 0.20}) {
+		t.Fatalf("fable-5-2 price = %+v", p)
+	}
 	if got := u.cost("<synthetic>"); got != 0 {
 		t.Fatalf("synthetic cost = %v, want 0", got)
 	}

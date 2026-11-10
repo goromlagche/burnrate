@@ -12,6 +12,8 @@ var prices = []struct {
 	prefix string
 	p      price
 }{
+	{"claude-fable-5-2", price{8, 40, 0.20}},
+	{"claude-mythos-5-2", price{8, 40, 0.20}},
 	{"claude-fable-5-1", price{10, 50, 0.25}},
 	{"claude-mythos-5-1", price{10, 50, 0.25}},
 	{"claude-fable-5", price{10, 50, 1}},

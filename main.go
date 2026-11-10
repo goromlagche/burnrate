@@ -78,7 +78,7 @@ type CodexSpend struct {
 }
 
 // Bump to force a full rescan when the parsed fields change.
-const stateVersion = 4
+const stateVersion = 5
 
 type State struct {
 	Version int                  `json:"version"`
