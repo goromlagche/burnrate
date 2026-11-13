@@ -77,12 +77,15 @@ func claudeReport(st *State) report {
 			r.Notes = append(r.Notes, limitNote(l.Name, l.Percent, l.ResetsAt))
 		}
 		if c.Limit > 0 {
-			r.Notes = append(r.Notes, fmt.Sprintf("Usage credits: %s / %s (%.1f%%)", usd(c.Used), usd(c.Limit), c.Percent))
+			r.Notes = append(r.Notes, creditsNote+fmt.Sprintf("%s / %s used", usd(c.Used), usd(c.Limit)))
 		}
 		r.Notes = append(r.Notes, "Updated "+c.FetchedAt.Local().Format("15:04"))
 	}
 	return r
 }
+
+// creditsNote labels the monthly credits, which pay only for use past the plan limits.
+const creditsNote = "Monthly credits (after limits): "
 
 func limitNote(name string, percent float64, resetsAt time.Time) string {
 	s := fmt.Sprintf("%s: %.0f%% used", name, percent)
@@ -101,20 +104,19 @@ func codexReport(st *State) report {
 		d := st.Days[k]
 		r.Rows = append(r.Rows, []string{k[5:], usd(d.CodexCost), humanTokens(d.CodexTokens)})
 	}
-	// The bar shows the fuller of the monthly spend control and the plan limit.
-	if s := st.Spend; s.Limit > 0 {
-		r.HasQuota, r.Percent = true, s.Percent
-		r.Stale = time.Since(s.FetchedAt) > apiStale
-		capLine := fmt.Sprintf("Monthly workspace credit usage: %.0f / %.0f (%.0f%%)", s.Used, s.Limit, s.Percent)
-		if rate := cfg.CodexCreditUSD; rate > 0 {
-			capLine += fmt.Sprintf(" ≈ %s / %s", usd(s.Used*rate), usd(s.Limit*rate))
-		}
-		r.Notes = append(r.Notes, capLine,
-			"Resets "+time.Unix(s.ResetsAt, 0).Local().Format("Mon 02 Jan 15:04"))
-	}
+	// The bar shows the fuller of the plan limit and the monthly spend control.
 	if x := st.Codex; !x.SeenAt.IsZero() {
-		r.HasQuota, r.Percent = true, max(r.Percent, x.UsedPercent)
+		r.HasQuota, r.Percent = true, x.UsedPercent
 		r.Notes = append(r.Notes, limitNote(window(x.WindowMinutes), x.UsedPercent, time.Unix(x.ResetsAt, 0)))
+	}
+	if s := st.Spend; s.Limit > 0 {
+		r.HasQuota, r.Percent = true, max(r.Percent, s.Percent)
+		r.Stale = time.Since(s.FetchedAt) > apiStale
+		line := creditsNote + fmt.Sprintf("%.0f / %.0f used", s.Used, s.Limit)
+		if rate := cfg.CodexCreditUSD; rate > 0 {
+			line += fmt.Sprintf(" ≈ %s / %s", usd(s.Used*rate), usd(s.Limit*rate))
+		}
+		r.Notes = append(r.Notes, line+", resets "+time.Unix(s.ResetsAt, 0).Local().Format("02 Jan"))
 	}
 	return r
 }
