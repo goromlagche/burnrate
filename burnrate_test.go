@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,10 +129,12 @@ func TestText(t *testing.T) {
 }
 
 func TestClaudeQuota(t *testing.T) {
+	// Resets lie in the future, else the limits count as already reset.
+	session, weekly := now.Add(time.Hour).UTC().Format(time.RFC3339Nano), now.Add(72*time.Hour).UTC().Format(time.RFC3339)
 	body := `{
 		"limits": [
-			{"kind": "session", "percent": 1, "resets_at": "2026-11-03T21:20:00.223799+00:00"},
-			{"kind": "weekly_all", "percent": 5, "resets_at": "2026-11-10T05:00:00+00:00"},
+			{"kind": "session", "percent": 1, "resets_at": "` + session + `"},
+			{"kind": "weekly_all", "percent": 5, "resets_at": "` + weekly + `"},
 			{"kind": "weekly_scoped", "percent": 0, "scope": {"model": {"display_name": "Fable"}}}
 		],
 		"extra_usage": {"monthly_limit": 50000, "used_credits": 1000, "utilization": null, "decimal_places": 2}
@@ -150,5 +153,20 @@ func TestClaudeQuota(t *testing.T) {
 	}
 	if r := claudeReport(st); !near(r.Percent, 5) {
 		t.Fatalf("bar percent = %v, want 5 (the fullest limit)", r.Percent)
+	}
+}
+
+func TestLimitPastReset(t *testing.T) {
+	st := &State{Days: map[string]*Day{}}
+	st.Claude = ClaudeQuota{FetchedAt: now, Limits: []PlanLimit{
+		{Name: "Weekly", Percent: 40, ResetsAt: now.Add(-time.Hour)},
+		{Name: "Session", Percent: 10, ResetsAt: now.Add(time.Hour)},
+	}}
+	r := claudeReport(st)
+	if !near(r.Percent, 10) {
+		t.Fatalf("bar percent = %v, want 10 (the weekly limit has reset)", r.Percent)
+	}
+	if !strings.HasPrefix(r.Notes[0], "Weekly: 0% used, reset ") {
+		t.Fatalf("note = %q", r.Notes[0])
 	}
 }

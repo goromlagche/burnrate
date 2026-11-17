@@ -73,7 +73,7 @@ func claudeReport(st *State) report {
 		r.HasQuota, r.Percent = true, c.Percent
 		r.Stale = time.Since(c.FetchedAt) > apiStale
 		for _, l := range c.Limits {
-			r.Percent = max(r.Percent, l.Percent)
+			r.Percent = max(r.Percent, current(l.Percent, l.ResetsAt))
 			r.Notes = append(r.Notes, limitNote(l.Name, l.Percent, l.ResetsAt))
 		}
 		if c.Limit > 0 {
@@ -87,12 +87,24 @@ func claudeReport(st *State) report {
 // creditsNote labels the monthly credits, which pay only for use past the plan limits.
 const creditsNote = "Monthly credits (after limits): "
 
-func limitNote(name string, percent float64, resetsAt time.Time) string {
-	s := fmt.Sprintf("%s: %.0f%% used", name, percent)
-	if !resetsAt.IsZero() {
-		s += ", resets " + resetsAt.Round(time.Minute).Local().Format("Mon 15:04")
+// current is the used percent, or 0 when the limit has reset since it was read.
+// A failed refresh, such as an expired login token, can leave it past its reset.
+func current(percent float64, resetsAt time.Time) float64 {
+	if !resetsAt.IsZero() && now.After(resetsAt) {
+		return 0
 	}
-	return s
+	return percent
+}
+
+func limitNote(name string, percent float64, resetsAt time.Time) string {
+	at := resetsAt.Round(time.Minute).Local().Format("Mon 02 Jan 15:04")
+	switch {
+	case resetsAt.IsZero():
+		return fmt.Sprintf("%s: %.0f%% used", name, percent)
+	case now.After(resetsAt):
+		return fmt.Sprintf("%s: 0%% used, reset %s", name, at)
+	}
+	return fmt.Sprintf("%s: %.0f%% used, resets %s", name, percent, at)
 }
 
 func codexReport(st *State) report {
@@ -106,8 +118,9 @@ func codexReport(st *State) report {
 	}
 	// The bar shows the fuller of the plan limit and the monthly spend control.
 	if x := st.Codex; !x.SeenAt.IsZero() {
-		r.HasQuota, r.Percent = true, x.UsedPercent
-		r.Notes = append(r.Notes, limitNote(window(x.WindowMinutes), x.UsedPercent, time.Unix(x.ResetsAt, 0)))
+		resetsAt := time.Unix(x.ResetsAt, 0)
+		r.HasQuota, r.Percent = true, current(x.UsedPercent, resetsAt)
+		r.Notes = append(r.Notes, limitNote(window(x.WindowMinutes), x.UsedPercent, resetsAt))
 	}
 	if s := st.Spend; s.Limit > 0 {
 		r.HasQuota, r.Percent = true, max(r.Percent, s.Percent)
