@@ -25,7 +25,7 @@ go install github.com/goromlagche/burnrate@latest
 
 Success prints `installed:` and two lines, for example `$27.89 78%` and `$2.35 5%`.
 
-- **Linux:** this starts the systemd user timer `burnrate.timer`. It runs every minute.
+- **Linux:** this starts the systemd user timer `burnrate.timer`. It runs every 15 seconds.
 - **macOS:** this builds the menu bar app and starts it at login. Tell the user to choose **Always Allow** when macOS asks for the `Claude Code-credentials` Keychain item.
 
 ## 3. Show it in the bar (Linux)
@@ -48,7 +48,22 @@ Codex reports its monthly cap in credits. Ask the user for the price of one cred
 
 Replace `0.05` with the price the user gives.
 
-## 5. Optional: Vorssaint (macOS)
+## 5. Optional: several Claude accounts
+
+If `burnrate install` printed "Found N Claude Code config dirs", the user has several accounts. Also check their shell config and aliases for `CLAUDE_CONFIG_DIR`. Ask for a short name for each account, for example `work` and `personal`. Add them to `~/.config/burnrate/config.json`, next to any keys already there:
+
+```json
+{
+  "claude_accounts": [
+    { "name": "work",     "dir": "~/.claude" },
+    { "name": "personal", "dir": "~/.claude-personal" }
+  ]
+}
+```
+
+Use the user's real dirs. Run `burnrate --text` to check: it prints the bar line with the account tag, for example `Claude $27.30 W 19%`.
+
+## 6. Optional: Vorssaint (macOS)
 
 If the user runs [Vorssaint](https://github.com/vorssaint/vorssaint-utils), offer to show burnrate in its Command Bar.
 
@@ -67,7 +82,7 @@ Then tell the user to add it in Vorssaint. Do not edit Vorssaint's settings your
 3. Turn on running without an argument.
 4. Type `burn` in the Command Bar.
 
-## 6. Verify
+## 7. Verify
 
 ```sh
 "$(go env GOPATH)/bin/burnrate" --json | head -20

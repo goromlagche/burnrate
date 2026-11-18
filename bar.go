@@ -27,18 +27,23 @@ var (
 
 // report is one tool's usage, rendered by each bar backend.
 type report struct {
-	Name      string
-	Glyph     string // Nerd Font icon for Linux bars
-	GlyphFG   string
-	Tint      string // macOS icon color; empty keeps a monochrome template icon
-	PNG       []byte // template icon for the macOS menu bar
-	Today     float64
-	Percent   float64 // quota used, if HasQuota
-	HasQuota  bool
-	Stale     bool
-	Rows      [][]string // recent days: date, cost[, tokens]
-	MonthCost float64
-	Notes     []string
+	Name    string
+	Glyph   string // Nerd Font icon for Linux bars
+	GlyphFG string
+	Tint    string // macOS icon color; empty keeps a monochrome template icon
+	PNG     []byte // template icon for the macOS menu bar
+	Today   float64
+	Quotas  []quota    // one, or none without quota data
+	Rows    [][]string // optional header, recent days, then the month total
+	Notes   []string   // "" separates groups
+}
+
+// quota is one percent on the bar.
+type quota struct {
+	Tag     string // account, when there are several
+	Percent float64
+	Credits bool // of the monthly credits, not a plan limit
+	Stale   bool
 }
 
 func todayUsage(st *State) *Day {
@@ -60,20 +65,79 @@ func recentDays(st *State, n int) []string {
 	return days
 }
 
+// claudeReport sums cost over all accounts. Quota does not add up across
+// accounts, so the bar shows the account you last typed a prompt in. Replies
+// do not count: a session can work on its own while you use the other one.
 func claudeReport(st *State) report {
 	r := report{Name: "Claude", Glyph: "", GlyphFG: fgClaude, Tint: fgClaude, PNG: pngClaude, Today: todayUsage(st).ClaudeCost}
-	for _, d := range st.Days {
-		r.MonthCost += d.ClaudeCost
+	accounts := claudeAccounts()
+	multi := len(accounts) > 1
+	active := accounts[0]
+	for _, a := range accounts[1:] {
+		if st.Prompted[a.Name].After(st.Prompted[active.Name]) {
+			active = a
+		}
+	}
+
+	// One cost column per account and a total, or a single column.
+	cells := func(by map[string]float64, total float64) []string {
+		if !multi {
+			return []string{usd(total)}
+		}
+		var c []string
+		for _, a := range accounts {
+			c = append(c, usd(by[a.Name]))
+		}
+		return append(c, usd(total))
+	}
+	if multi {
+		header := []string{""}
+		for _, a := range accounts {
+			header = append(header, a.Name)
+		}
+		r.Rows = append(r.Rows, append(header, "total"))
 	}
 	for _, k := range recentDays(st, 7) {
-		r.Rows = append(r.Rows, []string{k[5:], usd(st.Days[k].ClaudeCost)})
+		d := st.Days[k]
+		r.Rows = append(r.Rows, append([]string{k[5:]}, cells(d.ClaudeBy, d.ClaudeCost)...))
 	}
-	// The bar shows the fullest of the plan limits and the usage credits.
-	if c := st.Claude; !c.FetchedAt.IsZero() {
-		r.HasQuota, r.Percent = true, c.Percent
-		r.Stale = time.Since(c.FetchedAt) > apiStale
+	month, monthBy := 0.0, map[string]float64{}
+	for _, d := range st.Days {
+		month += d.ClaudeCost
+		for name, c := range d.ClaudeBy {
+			monthBy[name] += c
+		}
+	}
+	r.Rows = append(r.Rows, append([]string{"month"}, cells(monthBy, month)...))
+
+	for _, a := range accounts {
+		c, ok := st.Claude[a.Name]
+		if !ok || c.FetchedAt.IsZero() {
+			continue
+		}
+		if a == active {
+			q := quota{Stale: time.Since(c.FetchedAt) > apiStale}
+			q.Percent, q.Credits = c.pool()
+			if multi {
+				q.Tag = tag(a.Name, accounts)
+			}
+			r.Quotas = append(r.Quotas, q)
+		}
+		if multi {
+			if len(r.Notes) > 0 {
+				r.Notes = append(r.Notes, "")
+			}
+			mark := "○ "
+			if a == active {
+				mark = "● "
+			}
+			title := mark + a.Name
+			if c.Plan != "" {
+				title += " (" + strings.ToUpper(c.Plan[:1]) + c.Plan[1:] + ")"
+			}
+			r.Notes = append(r.Notes, title)
+		}
 		for _, l := range c.Limits {
-			r.Percent = max(r.Percent, current(l.Percent, l.ResetsAt))
 			r.Notes = append(r.Notes, limitNote(l.Name, l.Percent, l.ResetsAt))
 		}
 		if c.Limit > 0 {
@@ -82,6 +146,47 @@ func claudeReport(st *State) report {
 		r.Notes = append(r.Notes, "Updated "+c.FetchedAt.Local().Format("15:04"))
 	}
 	return r
+}
+
+// tag is the shortest uppercase prefix of name that no other account shares:
+// "W" for work and personal, "WO" and "WI" for work and wife.
+func tag(name string, accounts []claudeAccount) string {
+	upper := []rune(strings.ToUpper(name))
+	for n := 1; n < len(upper); n++ {
+		prefix, shared := string(upper[:n]), false
+		for _, a := range accounts {
+			shared = shared || (a.Name != name && strings.HasPrefix(strings.ToUpper(a.Name), prefix))
+		}
+		if !shared {
+			return prefix
+		}
+	}
+	return string(upper)
+}
+
+// pool is the percent of what you spend from now, and whether that is credits:
+//
+//	no limit used up           → the fullest weekly limit
+//	a limit used up, credits   → the monthly credits, which pay from then on
+//	a limit used up, no credits → 100%: you are blocked until it resets
+//
+// The 5-hour session limit counts only once used up: it resets too often to watch.
+func (c ClaudeQuota) pool() (percent float64, credits bool) {
+	usedUp := false
+	for _, l := range c.Limits {
+		p := current(l.Percent, l.ResetsAt)
+		usedUp = usedUp || p >= 100
+		if l.Kind != "session" {
+			percent = max(percent, p)
+		}
+	}
+	switch {
+	case usedUp && c.Limit > 0:
+		return c.Percent, true
+	case usedUp:
+		return 100, false
+	}
+	return percent, false
 }
 
 // creditsNote labels the monthly credits, which pay only for use past the plan limits.
@@ -109,22 +214,26 @@ func limitNote(name string, percent float64, resetsAt time.Time) string {
 
 func codexReport(st *State) report {
 	r := report{Name: "Codex", Glyph: "", GlyphFG: fgText, PNG: pngCodex, Today: todayUsage(st).CodexCost}
-	for _, d := range st.Days {
-		r.MonthCost += d.CodexCost
-	}
 	for _, k := range recentDays(st, 7) {
 		d := st.Days[k]
 		r.Rows = append(r.Rows, []string{k[5:], usd(d.CodexCost), humanTokens(d.CodexTokens)})
 	}
-	// The bar shows the fuller of the plan limit and the monthly spend control.
+	month := 0.0
+	for _, d := range st.Days {
+		month += d.CodexCost
+	}
+	r.Rows = append(r.Rows, []string{"month", usd(month)})
+	// The bar shows the weekly limit, or the monthly credits once it is used up.
+	// The weekly limit comes from the session logs, so only the credits go stale.
 	if x := st.Codex; !x.SeenAt.IsZero() {
 		resetsAt := time.Unix(x.ResetsAt, 0)
-		r.HasQuota, r.Percent = true, current(x.UsedPercent, resetsAt)
+		r.Quotas = []quota{{Percent: current(x.UsedPercent, resetsAt)}}
 		r.Notes = append(r.Notes, limitNote(window(x.WindowMinutes), x.UsedPercent, resetsAt))
 	}
 	if s := st.Spend; s.Limit > 0 {
-		r.HasQuota, r.Percent = true, max(r.Percent, s.Percent)
-		r.Stale = time.Since(s.FetchedAt) > apiStale
+		if len(r.Quotas) == 0 || r.Quotas[0].Percent >= 100 {
+			r.Quotas = []quota{{Percent: s.Percent, Credits: true, Stale: time.Since(s.FetchedAt) > apiStale}}
+		}
 		line := creditsNote + fmt.Sprintf("%.0f / %.0f used", s.Used, s.Limit)
 		if rate := cfg.CodexCreditUSD; rate > 0 {
 			line += fmt.Sprintf(" ≈ %s / %s", usd(s.Used*rate), usd(s.Limit*rate))
@@ -135,45 +244,80 @@ func codexReport(st *State) report {
 }
 
 // level buckets quota use: ok below 60%, warn below 85%, crit above.
-func (r report) level() string {
+func (q quota) level() string {
 	switch {
-	case !r.HasQuota:
-		return "ok"
-	case r.Stale:
+	case q.Stale:
 		return "stale"
-	case r.Percent >= 85:
+	case q.Percent >= 85:
 		return "crit"
-	case r.Percent >= 60:
+	case q.Percent >= 60:
 		return "warn"
 	}
 	return "ok"
 }
 
-func (r report) percentText() string {
-	s := fmt.Sprintf("%.0f%%", r.Percent)
-	if r.Stale {
+// level is the worst level of the report's quotas.
+func (r report) level() string {
+	rank := map[string]int{"ok": 0, "stale": 1, "warn": 2, "crit": 3}
+	level := "ok"
+	for _, q := range r.Quotas {
+		if l := q.level(); rank[l] > rank[level] {
+			level = l
+		}
+	}
+	return level
+}
+
+// text is "78%", "78%$" for credits, or "W 78%" with several accounts.
+func (q quota) text() string {
+	s := fmt.Sprintf("%.0f%%", q.Percent)
+	if q.Credits {
+		s += "$"
+	}
+	if q.Stale {
 		s += "?"
+	}
+	if q.Tag != "" {
+		s = q.Tag + " " + s
 	}
 	return s
 }
 
-// table lays out Rows plus a month total in fixed-width columns.
+// percentText joins the quotas: "W 6%  P 33%".
+func (r report) percentText() string {
+	var parts []string
+	for _, q := range r.Quotas {
+		parts = append(parts, q.text())
+	}
+	return strings.Join(parts, "  ")
+}
+
+// table lays out Rows in columns: the first left-aligned, the rest right-aligned.
 func (r report) table() []string {
+	var widths []int
+	for _, row := range r.Rows {
+		for i, cell := range row {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[i] = max(widths[i], len([]rune(cell)))
+		}
+	}
 	var lines []string
 	for _, row := range r.Rows {
-		line := fmt.Sprintf("%-5s  %9s", row[0], row[1])
-		if len(row) > 2 {
-			line += fmt.Sprintf("  %6s", row[2])
+		line := fmt.Sprintf("%-*s", widths[0], row[0])
+		for i, cell := range row[1:] {
+			line += fmt.Sprintf("  %*s", widths[i+1], cell)
 		}
 		lines = append(lines, line)
 	}
-	return append(lines, fmt.Sprintf("%-5s  %9s", "month", usd(r.MonthCost)))
+	return lines
 }
 
 // text is the plain line for launchers: "Claude $27.89 78%".
 func (r report) text() string {
 	s := r.Name + " " + usd(r.Today)
-	if r.HasQuota {
+	if len(r.Quotas) > 0 {
 		s += " " + r.percentText()
 	}
 	return s
@@ -184,8 +328,8 @@ func (r report) pango() string {
 	colors := map[string]string{"ok": fgGood, "warn": fgWarn, "crit": fgBad, "stale": fgDim}
 	out := fmt.Sprintf(`<span foreground="%s" font_family="Symbols Nerd Font Mono">%s</span> `, r.GlyphFG, r.Glyph) +
 		fmt.Sprintf(`<span foreground="%s">%s</span>`, fgText, usd(r.Today))
-	if r.HasQuota {
-		out += fmt.Sprintf(`  <span foreground="%s">%s</span>`, colors[r.level()], r.percentText())
+	for _, q := range r.Quotas {
+		out += fmt.Sprintf(`  <span foreground="%s">%s</span>`, colors[q.level()], q.text())
 	}
 	return out
 }
@@ -216,7 +360,7 @@ type menubarItem struct {
 
 func (r report) menubar() menubarItem {
 	m := menubarItem{Title: usd(r.Today), Icon: r.PNG, Tint: r.Tint}
-	if r.HasQuota {
+	if len(r.Quotas) > 0 {
 		m.Title += "  " + r.percentText()
 	}
 	switch r.level() {
@@ -227,7 +371,13 @@ func (r report) menubar() menubarItem {
 	}
 	m.Lines = append([]string{r.Name + " (estimate at API prices)"}, r.table()...)
 	if len(r.Notes) > 0 {
-		m.Lines = append(append(m.Lines, "---"), r.Notes...)
+		m.Lines = append(m.Lines, "---")
+		for _, n := range r.Notes {
+			if n == "" {
+				n = "---"
+			}
+			m.Lines = append(m.Lines, n)
+		}
 	}
 	return m
 }

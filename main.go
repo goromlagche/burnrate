@@ -1,6 +1,6 @@
 // burnrate shows daily Claude/Codex usage and quota in the status bar.
 //
-// It runs once and exits. On Linux a systemd user timer runs it every minute
+// It runs once and exits. On Linux a systemd user timer runs it every 15 seconds
 // and Waybar (or i3status) reads the files it writes. On macOS BurnrateBar runs
 // it with --menubar and shows the items in the menu bar.
 package main
@@ -32,9 +32,10 @@ const (
 )
 
 type Day struct {
-	ClaudeCost  float64 `json:"claude_cost"` // estimate at API list prices
-	CodexTokens int64   `json:"codex_tokens"`
-	CodexCost   float64 `json:"codex_cost"` // estimate at API list prices
+	ClaudeCost  float64            `json:"claude_cost"`       // estimate at API list prices, all accounts
+	ClaudeBy    map[string]float64 `json:"claude_by_account"` // the same, per account name
+	CodexTokens int64              `json:"codex_tokens"`
+	CodexCost   float64            `json:"codex_cost"` // estimate at API list prices
 }
 
 type FileState struct {
@@ -47,15 +48,18 @@ type FileState struct {
 
 // ClaudeQuota holds the plan limits and the usage credits that cover use past them.
 type ClaudeQuota struct {
+	Plan      string      `json:"plan"` // subscription type, such as "team" or "pro"
 	Limits    []PlanLimit `json:"limits"`
 	Used      float64     `json:"used"` // usage credits, USD
 	Limit     float64     `json:"limit"`
 	Percent   float64     `json:"percent"`
 	FetchedAt time.Time   `json:"fetched_at"`
+	TriedAt   time.Time   `json:"tried_at"` // last fetch, failed or not
 }
 
 // PlanLimit is one session or weekly limit, as the Claude usage settings page shows it.
 type PlanLimit struct {
+	Kind     string    `json:"kind"` // "session", "weekly_all", "weekly_scoped"
 	Name     string    `json:"name"`
 	Percent  float64   `json:"percent"`
 	ResetsAt time.Time `json:"resets_at"`
@@ -75,10 +79,11 @@ type CodexSpend struct {
 	Percent   float64   `json:"percent"`
 	ResetsAt  int64     `json:"resets_at"`
 	FetchedAt time.Time `json:"fetched_at"`
+	TriedAt   time.Time `json:"tried_at"` // last fetch, failed or not
 }
 
 // Bump to force a full rescan when the parsed fields change.
-const stateVersion = 5
+const stateVersion = 7
 
 type State struct {
 	Version int                  `json:"version"`
@@ -86,9 +91,11 @@ type State struct {
 	Files   map[string]FileState `json:"files"`
 	Seen    map[string]bool      `json:"seen"` // billed Claude messages and Codex events
 	Days    map[string]*Day      `json:"days"`
-	Claude  ClaudeQuota          `json:"claude"`
-	Codex   CodexQuota           `json:"codex"`
-	Spend   CodexSpend           `json:"codex_spend"`
+	// Claude quota and the time of your last prompt, per account name.
+	Claude   map[string]ClaudeQuota `json:"claude_quotas"`
+	Prompted map[string]time.Time   `json:"claude_prompted"`
+	Codex    CodexQuota             `json:"codex"`
+	Spend    CodexSpend             `json:"codex_spend"`
 }
 
 var (
@@ -160,16 +167,22 @@ func main() {
 
 	if *jsonOut {
 		out, _ := json.MarshalIndent(map[string]any{
-			"days": st.Days, "claude": st.Claude, "codex": st.Codex, "codex_spend": st.Spend,
+			"days": st.Days, "claude": st.Claude, "claude_prompted": st.Prompted, "codex": st.Codex, "codex_spend": st.Spend,
 		}, "", "  ")
 		fmt.Println(string(out))
 	}
 }
 
-// lock holds an exclusive lock on the state until the process exits.
 // config is optional, read from ~/.config/burnrate/config.json.
 type config struct {
-	CodexCreditUSD float64 `json:"codex_credit_usd"` // set by your OpenAI agreement
+	CodexCreditUSD float64         `json:"codex_credit_usd"` // set by your OpenAI agreement
+	ClaudeAccounts []claudeAccount `json:"claude_accounts"`
+}
+
+// claudeAccount is one Claude Code config dir (CLAUDE_CONFIG_DIR), signed in to one account.
+type claudeAccount struct {
+	Name string `json:"name"`
+	Dir  string `json:"dir"`
 }
 
 func loadConfig() (c config) {
@@ -179,6 +192,70 @@ func loadConfig() (c config) {
 	return c
 }
 
+// claudeAccounts returns the configured accounts, or ~/.claude alone.
+// Dirs may use ~/ and $VARS. A missing name comes from the dir, and names
+// are made unique, since they key the state.
+func claudeAccounts() []claudeAccount {
+	var accounts []claudeAccount
+	seen := map[string]bool{}
+	for _, a := range cfg.ClaudeAccounts {
+		if a.Dir = os.ExpandEnv(a.Dir); a.Dir == "" {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(a.Dir, "~/"); ok {
+			a.Dir = filepath.Join(home, rest)
+		}
+		if a.Name == "" {
+			a.Name = accountName(a.Dir)
+		}
+		for base, i := a.Name, 2; seen[a.Name]; i++ {
+			a.Name = fmt.Sprintf("%s-%d", base, i)
+		}
+		seen[a.Name] = true
+		accounts = append(accounts, a)
+	}
+	if len(accounts) == 0 {
+		return []claudeAccount{{Name: "claude", Dir: filepath.Join(home, ".claude")}}
+	}
+	return accounts
+}
+
+// accountName names an account after its dir: ~/.claude-work is "claude-work".
+func accountName(dir string) string {
+	if name := strings.TrimLeft(filepath.Base(dir), "."); name != "" {
+		return name
+	}
+	return "claude"
+}
+
+// claudeDirs finds Claude Code config dirs: ~/.claude, CLAUDE_CONFIG_DIR, and
+// any dir in home with session logs and Claude Code's own files.
+func claudeDirs() []string {
+	var dirs []string
+	isConfig := func(d string) bool {
+		if _, err := os.Stat(filepath.Join(d, "projects")); err != nil {
+			return false
+		}
+		for _, f := range []string{".credentials.json", ".claude.json"} {
+			if _, err := os.Stat(filepath.Join(d, f)); err == nil {
+				return true
+			}
+		}
+		return d == filepath.Join(home, ".claude") // macOS keeps its credentials in the Keychain
+	}
+	entries, _ := os.ReadDir(home)
+	for _, e := range entries {
+		if d := filepath.Join(home, e.Name()); e.IsDir() && isConfig(d) {
+			dirs = append(dirs, d)
+		}
+	}
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" && !slices.Contains(dirs, d) && isConfig(d) {
+		dirs = append(dirs, d)
+	}
+	return dirs
+}
+
+// lock holds an exclusive lock on the state until the process exits.
 func lock() error {
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 		return err
@@ -211,6 +288,12 @@ func loadState() *State {
 	}
 	if st.Days == nil {
 		st.Days = map[string]*Day{}
+	}
+	if st.Claude == nil {
+		st.Claude = map[string]ClaudeQuota{}
+	}
+	if st.Prompted == nil {
+		st.Prompted = map[string]time.Time{}
 	}
 	return st
 }
@@ -291,37 +374,63 @@ func walkJSONL(root string, since time.Time, fn func(path string)) {
 }
 
 type claudeLine struct {
-	Type      string    `json:"type"`
-	Timestamp time.Time `json:"timestamp"`
-	RequestID string    `json:"requestId"`
-	Message   struct {
-		ID    string       `json:"id"`
-		Model string       `json:"model"`
-		Usage *claudeUsage `json:"usage"`
+	Type        string    `json:"type"`
+	Timestamp   time.Time `json:"timestamp"`
+	RequestID   string    `json:"requestId"`
+	IsMeta      bool      `json:"isMeta"`      // added by Claude Code, not typed
+	IsSidechain bool      `json:"isSidechain"` // a subagent's conversation
+	Message     struct {
+		ID      string          `json:"id"`
+		Model   string          `json:"model"`
+		Usage   *claudeUsage    `json:"usage"`
+		Content json.RawMessage `json:"content"`
 	} `json:"message"`
 }
 
+// isPrompt reports whether a user line is something you typed, not a tool
+// result or a line that Claude Code or a subagent adds.
+func (l claudeLine) isPrompt() bool {
+	return l.Type == "user" && !l.IsMeta && !l.IsSidechain && !bytes.Contains(l.Message.Content, []byte(`"tool_result"`))
+}
+
 func scanClaude(st *State, monthStart time.Time) {
-	marker := []byte(`"type":"assistant"`)
-	walkJSONL(filepath.Join(home, ".claude", "projects"), monthStart, func(path string) {
-		readNew(st, path, func(line []byte, _ *FileState) {
-			if !bytes.Contains(line, marker) {
-				return
-			}
-			var l claudeLine
-			if json.Unmarshal(line, &l) != nil || l.Message.Usage == nil || l.Timestamp.Before(monthStart) {
-				return
-			}
-			// Streamed replies and resumed sessions repeat the same message.
-			key := l.Message.ID + ":" + l.RequestID
-			if st.Seen[key] {
-				return
-			}
-			st.Seen[key] = true
-			d := st.day(l.Timestamp)
-			d.ClaudeCost += l.Message.Usage.cost(l.Message.Model)
+	reply, prompt := []byte(`"type":"assistant"`), []byte(`"type":"user"`)
+	for _, a := range claudeAccounts() {
+		walkJSONL(filepath.Join(a.Dir, "projects"), monthStart, func(path string) {
+			readNew(st, path, func(line []byte, _ *FileState) {
+				// Tool results are the bulk of user lines; skip them before decoding.
+				if !bytes.Contains(line, reply) && (!bytes.Contains(line, prompt) || bytes.Contains(line, []byte(`"toolUseResult"`))) {
+					return
+				}
+				var l claudeLine
+				if json.Unmarshal(line, &l) != nil || l.Timestamp.Before(monthStart) {
+					return
+				}
+				if l.isPrompt() {
+					if l.Timestamp.After(st.Prompted[a.Name]) {
+						st.Prompted[a.Name] = l.Timestamp
+					}
+					return
+				}
+				if l.Type != "assistant" || l.Message.Usage == nil {
+					return
+				}
+				// Streamed replies and resumed sessions repeat the same message.
+				key := l.Message.ID + ":" + l.RequestID
+				if st.Seen[key] {
+					return
+				}
+				st.Seen[key] = true
+				d := st.day(l.Timestamp)
+				cost := l.Message.Usage.cost(l.Message.Model)
+				d.ClaudeCost += cost
+				if d.ClaudeBy == nil {
+					d.ClaudeBy = map[string]float64{}
+				}
+				d.ClaudeBy[a.Name] += cost
+			})
 		})
-	})
+	}
 }
 
 type codexLine struct {
@@ -402,16 +511,25 @@ func scanCodex(st *State, monthStart time.Time) {
 	}
 }
 
+// fetchQuotas calls each usage API at most once per apiInterval. A failed call,
+// such as with an expired token, waits the full interval too.
 func fetchQuotas(st *State) {
-	if time.Since(st.Claude.FetchedAt) >= apiInterval {
-		if err := fetchClaudeAPI(&st.Claude); err != nil {
-			fmt.Fprintln(os.Stderr, "claude usage api:", err)
+	for _, a := range claudeAccounts() {
+		q := st.Claude[a.Name]
+		if time.Since(q.TriedAt) < apiInterval {
+			continue
 		}
+		if err := fetchClaudeAPI(a.Dir, &q); err != nil {
+			fmt.Fprintf(os.Stderr, "claude usage api (%s): %v\n", a.Name, err)
+		}
+		q.TriedAt = now
+		st.Claude[a.Name] = q
 	}
-	if time.Since(st.Spend.FetchedAt) >= apiInterval {
+	if time.Since(st.Spend.TriedAt) >= apiInterval {
 		if err := fetchCodexAPI(&st.Spend); err != nil {
 			fmt.Fprintln(os.Stderr, "codex usage api:", err)
 		}
+		st.Spend.TriedAt = now
 	}
 }
 
@@ -477,27 +595,29 @@ func fetchCodexAPI(q *CodexSpend) error {
 	return nil
 }
 
-// claudeCredentials returns Claude Code's OAuth credentials JSON.
-// macOS keeps it in the login Keychain; Linux keeps it in a file.
-func claudeCredentials() ([]byte, error) {
-	if runtime.GOOS == "darwin" {
+// claudeCredentials returns the OAuth credentials JSON of the Claude Code config dir.
+// macOS keeps the default dir's in the login Keychain; Linux keeps them in a file.
+// Other dirs on macOS fall back to the file.
+func claudeCredentials(dir string) ([]byte, error) {
+	if runtime.GOOS == "darwin" && dir == filepath.Join(home, ".claude") {
 		out, err := exec.Command("/usr/bin/security", "find-generic-password", "-s", "Claude Code-credentials", "-w").Output()
 		if err == nil {
 			return out, nil
 		}
 	}
-	return os.ReadFile(filepath.Join(home, ".claude", ".credentials.json"))
+	return os.ReadFile(filepath.Join(dir, ".credentials.json"))
 }
 
-func fetchClaudeAPI(q *ClaudeQuota) error {
-	b, err := claudeCredentials()
+func fetchClaudeAPI(dir string, q *ClaudeQuota) error {
+	b, err := claudeCredentials(dir)
 	if err != nil {
 		return err
 	}
 	var creds struct {
 		OAuth struct {
-			AccessToken string `json:"accessToken"`
-			ExpiresAt   int64  `json:"expiresAt"`
+			AccessToken      string `json:"accessToken"`
+			ExpiresAt        int64  `json:"expiresAt"`
+			SubscriptionType string `json:"subscriptionType"`
 		} `json:"claudeAiOauth"`
 	}
 	if err := json.Unmarshal(b, &creds); err != nil {
@@ -516,7 +636,11 @@ func fetchClaudeAPI(q *ClaudeQuota) error {
 	if err != nil {
 		return err
 	}
-	return body.apply(q)
+	if err := body.apply(q); err != nil {
+		return err
+	}
+	q.Plan = creds.OAuth.SubscriptionType
+	return nil
 }
 
 type claudeUsageBody struct {
@@ -531,6 +655,7 @@ type claudeUsageBody struct {
 		} `json:"scope"`
 	} `json:"limits"`
 	Extra *struct {
+		Enabled      *bool    `json:"is_enabled"`
 		MonthlyLimit float64  `json:"monthly_limit"`
 		UsedCredits  float64  `json:"used_credits"`
 		Utilization  *float64 `json:"utilization"`
@@ -553,9 +678,10 @@ func (b claudeUsageBody) apply(q *ClaudeQuota) error {
 		case l.Scope != nil && l.Scope.Model != nil && l.Scope.Model.DisplayName != "":
 			name = "Weekly (" + l.Scope.Model.DisplayName + ")"
 		}
-		q.Limits = append(q.Limits, PlanLimit{Name: name, Percent: l.Percent, ResetsAt: l.ResetsAt})
+		q.Limits = append(q.Limits, PlanLimit{Kind: l.Kind, Name: name, Percent: l.Percent, ResetsAt: l.ResetsAt})
 	}
-	if x := b.Extra; x != nil {
+	// Credits that are off, for example out of credits, cover nothing; leave them at 0.
+	if x := b.Extra; x != nil && (x.Enabled == nil || *x.Enabled) {
 		div := 1.0
 		for range x.Decimals {
 			div *= 10

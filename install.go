@@ -22,7 +22,7 @@ var (
 	launchID = fmt.Sprintf("gui/%d", os.Getuid())
 )
 
-// install runs burnrate every minute: a systemd user timer on Linux, a menu
+// install runs burnrate every 15 seconds: a systemd user timer on Linux, a menu
 // bar app started at login on macOS. Both point at this binary.
 func install() error {
 	bin, err := os.Executable()
@@ -155,5 +155,28 @@ func check() error {
 	for _, it := range items {
 		fmt.Println(" ", strings.Join(strings.Fields(it.Title), " "))
 	}
+	if hint := accountsHint(); hint != "" {
+		fmt.Print(hint)
+	}
 	return nil
+}
+
+// accountsHint suggests claude_accounts when it finds several Claude Code
+// config dirs that the config does not list yet.
+func accountsHint() string {
+	dirs := claudeDirs()
+	if len(dirs) < 2 || len(cfg.ClaudeAccounts) > 0 {
+		return ""
+	}
+	var accounts []claudeAccount
+	for _, d := range dirs {
+		short := d
+		if rest, ok := strings.CutPrefix(d, home+string(filepath.Separator)); ok {
+			short = "~/" + rest
+		}
+		accounts = append(accounts, claudeAccount{Name: accountName(d), Dir: short})
+	}
+	b, _ := json.MarshalIndent(map[string]any{"claude_accounts": accounts}, "", "  ")
+	return fmt.Sprintf("\nFound %d Claude Code config dirs, one per account. To show them all, add this to\n"+
+		"~/.config/burnrate/config.json, with names of your choice:\n\n%s\n", len(dirs), b)
 }

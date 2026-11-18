@@ -1,10 +1,10 @@
 [Unit]
-Description=Refresh Claude/Codex usage every minute
+Description=Refresh Claude/Codex usage every 15 seconds
 
 [Timer]
 OnBootSec=15s
-OnUnitActiveSec=60s
-AccuracySec=5s
+OnUnitActiveSec=15s
+AccuracySec=1s
 
 [Install]
 WantedBy=timers.target
