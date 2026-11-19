@@ -41,7 +41,7 @@ Requires Go 1.22 or later.
 **Linux**
 
 ```sh
-go install github.com/goromlagche/burnrate@v0.2.1
+go install github.com/goromlagche/burnrate@v0.2.2
 burnrate install
 ```
 
@@ -60,7 +60,7 @@ Set `markup = "pango"` in `general`. Add `read_file` blocks for `~/.cache/burnra
 
 ```sh
 xcode-select --install   # once, to build the menu bar app
-go install github.com/goromlagche/burnrate@v0.2.1
+go install github.com/goromlagche/burnrate@v0.2.2
 burnrate install
 ```
 
@@ -122,8 +122,8 @@ If you run Claude Code with more than one `CLAUDE_CONFIG_DIR`, for example work 
 
 - `burnrate install` finds your Claude Code config dirs and prints this list for you to paste.
 - `dir` takes `~/` and `$VARS`. `name` is optional and defaults to the dir name.
-- **Cost** adds up all accounts. The tooltip shows one column per account and a total.
-- **Quota** is per account. The bar shows the account you last typed a prompt in, tagged with the start of its name: `$27.30  W 19%`. A session that keeps working on its own does not take over the bar. The tooltip lists the limits of each account.
+- **The bar** shows one account: the one you last typed a prompt in, tagged with the start of its name. `$27.30  W 19%` is today's cost and quota of `work` only. A session that keeps working on its own does not take over the bar.
+- **The tooltip** shows one cost column per account and a total, and the limits of each account.
 - Without `claude_accounts`, burnrate reads `~/.claude` only.
 - On macOS, burnrate reads the Keychain for `~/.claude` only. For other dirs it reads `<dir>/.credentials.json`, so their quota can be missing.
 

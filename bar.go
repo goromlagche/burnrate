@@ -65,9 +65,10 @@ func recentDays(st *State, n int) []string {
 	return days
 }
 
-// claudeReport sums cost over all accounts. Quota does not add up across
-// accounts, so the bar shows the account you last typed a prompt in. Replies
-// do not count: a session can work on its own while you use the other one.
+// claudeReport shows one account on the bar: the one you last typed a prompt
+// in. Its cost and quota sit next to its tag, so "$4.00 P 27%" is all
+// personal. Replies do not count: a session can work on its own while you use
+// the other one. The tooltip has every account and the total.
 func claudeReport(st *State) report {
 	r := report{Name: "Claude", Glyph: "", GlyphFG: fgClaude, Tint: fgClaude, PNG: pngClaude, Today: todayUsage(st).ClaudeCost}
 	accounts := claudeAccounts()
@@ -77,6 +78,9 @@ func claudeReport(st *State) report {
 		if st.Prompted[a.Name].After(st.Prompted[active.Name]) {
 			active = a
 		}
+	}
+	if multi {
+		r.Today = todayUsage(st).ClaudeBy[active.Name]
 	}
 
 	// One cost column per account and a total, or a single column.

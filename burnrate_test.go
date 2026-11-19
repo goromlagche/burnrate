@@ -219,14 +219,15 @@ func TestMultiAccount(t *testing.T) {
 	st.Claude["work"] = ClaudeQuota{Plan: "team", FetchedAt: now, Limit: 500, Limits: []PlanLimit{{Name: "Weekly", Percent: 90, ResetsAt: soon}}}
 	st.Claude["personal"] = ClaudeQuota{Plan: "pro", FetchedAt: now, Limits: []PlanLimit{{Name: "Weekly", Percent: 27, ResetsAt: soon}}}
 	r := claudeReport(st)
-	if !near(r.Today, 12) || r.text() != "Claude $12.00 P 27%" {
+	// The bar shows only the tagged account's cost; the total stays in the table.
+	if !near(r.Today, 4) || r.text() != "Claude $4.00 P 27%" {
 		t.Fatalf("today = %v, text = %q", r.Today, r.text())
 	}
 
 	// You type in work: the bar switches.
 	writeLog(t, work, typed(0))
 	scanClaude(st, monthStart)
-	if got := claudeReport(st).text(); got != "Claude $12.00 W 90%" {
+	if got := claudeReport(st).text(); got != "Claude $8.00 W 90%" {
 		t.Fatalf("after a prompt in work: text = %q", got)
 	}
 	table := strings.Join(r.table(), "\n")
