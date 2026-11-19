@@ -53,6 +53,10 @@ func TestCodexCost(t *testing.T) {
 	if got := long.cost("gpt-6.1-sol", false); !near(got, 0.3*4+0.1*15) {
 		t.Fatalf("long-context sol cost = %v", got)
 	}
+	// gpt-6.2-astra: 40K uncached*8 + 50K cached*0.40 + 10K write*10 + 100K out*40, per M
+	if got := u.cost("gpt-6.2-astra", false); !near(got, 0.32+0.02+0.1+4) {
+		t.Fatalf("astra 6.2 cost = %v", got)
+	}
 	if got := u.cost("gpt-6.1-sol", true); !near(got, 2*u.cost("gpt-6.1-sol", false)) {
 		t.Fatalf("priority cost = %v, want 2x standard", got)
 	}

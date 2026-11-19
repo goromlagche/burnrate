@@ -77,13 +77,16 @@ func (u *claudeUsage) cost(model string) float64 {
 	return usd / 1e6
 }
 
-// OpenAI per-million prices, from developers.openai.com/api/docs/pricing (2026-10-25).
+// OpenAI per-million prices, from developers.openai.com/api/docs/pricing (checked 2026-11-19).
 // Short context (<=272K input); long context doubles input and adds 50% to output.
 type codexPrice struct {
 	In, Cached, Write, Out float64 // Write = 30m cache write
 }
 
 var codexPrices = map[string]codexPrice{
+	"gpt-6.2-astra": {8, 0.40, 10, 40},
+	"gpt-6.2-sol":   {2, 0.10, 2.5, 10},
+	"gpt-6.1-terra": {1, 0.05, 1.25, 5},
 	"gpt-6-astra":   {10, 1, 12.5, 50},
 	"gpt-6.1-sol":   {2, 0.10, 2.5, 10},
 	"gpt-6-sol":     {2, 0.20, 2.5, 10},
