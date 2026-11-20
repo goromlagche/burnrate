@@ -398,14 +398,15 @@ func (r report) basis() string {
 	return "estimate at API prices"
 }
 
-// timeLeft is whole days to t, or hours in the last day; "" when unknown or past.
+// timeLeft is days to t, rounded to the nearest day, or hours in the last
+// day; "" when unknown or past. Rounding keeps 3d 22h from reading as 3d.
 func timeLeft(t time.Time) string {
 	d := t.Sub(now)
 	switch {
 	case t.IsZero() || d <= 0:
 		return ""
 	case d >= 24*time.Hour:
-		return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
+		return fmt.Sprintf("%dd", int((d+12*time.Hour)/(24*time.Hour)))
 	}
 	return fmt.Sprintf("%dh", max(1, int((d+time.Hour-1)/time.Hour)))
 }

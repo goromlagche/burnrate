@@ -164,8 +164,8 @@ func TestClaudeQuota(t *testing.T) {
 	if len(c.Limits) != 3 || c.Limits[2].Name != "Weekly (Fable)" || !near(c.Used, 10) || !near(c.Percent, 2) {
 		t.Fatalf("quota = %+v", c)
 	}
-	if r := claudeReport(st); r.percentText() != "5% 2d" {
-		t.Fatalf("bar = %q, want 5%% 2d (the fullest weekly limit and its reset)", r.percentText())
+	if r := claudeReport(st); r.percentText() != "5% 3d" {
+		t.Fatalf("bar = %q, want 5%% 3d (the fullest weekly limit and its reset)", r.percentText())
 	}
 }
 
@@ -468,7 +468,8 @@ func TestTimeLeft(t *testing.T) {
 	for _, tc := range []struct {
 		in   time.Duration
 		want string
-	}{{11*24*time.Hour + 5*time.Hour, "11d"}, {24 * time.Hour, "1d"}, {23*time.Hour + time.Minute, "24h"},
+	}{{11*24*time.Hour + 5*time.Hour, "11d"}, {3*24*time.Hour + 22*time.Hour, "4d"}, {36 * time.Hour, "2d"},
+		{24 * time.Hour, "1d"}, {23*time.Hour + time.Minute, "24h"},
 		{90 * time.Minute, "2h"}, {time.Minute, "1h"}, {-time.Minute, ""}} {
 		if got := timeLeft(now.Add(tc.in)); got != tc.want {
 			t.Errorf("timeLeft(%v) = %q, want %q", tc.in, got, tc.want)
