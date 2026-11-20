@@ -36,6 +36,10 @@ type Day struct {
 	ClaudeBy    map[string]float64 `json:"claude_by_account"` // the same, per account name
 	CodexTokens int64              `json:"codex_tokens"`
 	CodexCost   float64            `json:"codex_cost"` // estimate at API list prices
+	// OpenCode is recomputed from its database on every run.
+	OpenCodeTokens int64              `json:"opencode_tokens,omitempty"`
+	OpenCodeCost   float64            `json:"opencode_cost,omitempty"`
+	OpenCodeBy     map[string]float64 `json:"opencode_by_provider,omitempty"`
 }
 
 type FileState struct {
@@ -94,8 +98,10 @@ type State struct {
 	// Claude quota and the time of your last prompt, per account name.
 	Claude   map[string]ClaudeQuota `json:"claude_quotas"`
 	Prompted map[string]time.Time   `json:"claude_prompted"`
+	OpenCode bool                   `json:"-"` // the OpenCode database was read this run
 	Codex    CodexQuota             `json:"codex"`
 	Spend    CodexSpend             `json:"codex_spend"`
+	Budget   OpenCodeBudget         `json:"opencode_budget"`
 }
 
 var (
@@ -137,12 +143,16 @@ func main() {
 
 	scanClaude(st, monthStart)
 	scanCodex(st, monthStart)
+	scanOpenCode(st, monthStart)
 	fetchQuotas(st)
 
 	if err := saveState(st); err != nil {
 		fmt.Fprintln(os.Stderr, "save state:", err)
 	}
 	reports := map[string]report{"claude": claudeReport(st), "codex": codexReport(st)}
+	if st.OpenCode {
+		reports["opencode"] = openCodeReport(st)
+	}
 	// <name>.json for Waybar, <name>.txt for i3status read_file.
 	for name, r := range reports {
 		j, _ := json.Marshal(r.waybar())
@@ -157,7 +167,11 @@ func main() {
 	}
 
 	if *text {
-		fmt.Println(reports["claude"].text() + " · " + reports["codex"].text())
+		line := reports["claude"].text() + " · " + reports["codex"].text()
+		if r, ok := reports["opencode"]; ok {
+			line += " · " + r.text()
+		}
+		fmt.Println(line)
 	}
 
 	if *menubar {
@@ -530,6 +544,12 @@ func fetchQuotas(st *State) {
 			fmt.Fprintln(os.Stderr, "codex usage api:", err)
 		}
 		st.Spend.TriedAt = now
+	}
+	if st.OpenCode && time.Since(st.Budget.TriedAt) >= apiInterval {
+		if err := fetchOpenCodeBudget(&st.Budget); err != nil {
+			fmt.Fprintln(os.Stderr, "opencode usage api:", err)
+		}
+		st.Budget.TriedAt = now
 	}
 }
 

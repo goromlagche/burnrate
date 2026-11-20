@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -161,8 +164,8 @@ func TestClaudeQuota(t *testing.T) {
 	if len(c.Limits) != 3 || c.Limits[2].Name != "Weekly (Fable)" || !near(c.Used, 10) || !near(c.Percent, 2) {
 		t.Fatalf("quota = %+v", c)
 	}
-	if r := claudeReport(st); r.percentText() != "5%" {
-		t.Fatalf("bar = %q, want 5%% (the fullest weekly limit)", r.percentText())
+	if r := claudeReport(st); r.percentText() != "5% 2d" {
+		t.Fatalf("bar = %q, want 5%% 2d (the fullest weekly limit and its reset)", r.percentText())
 	}
 }
 
@@ -174,8 +177,8 @@ func TestLimitPastReset(t *testing.T) {
 	}}}}
 	r := claudeReport(st)
 	// The weekly limit has reset, and the session limit never counts on the bar.
-	if r.percentText() != "10%" {
-		t.Fatalf("bar = %q, want 10%%", r.percentText())
+	if r.percentText() != "10% 1h" {
+		t.Fatalf("bar = %q, want 10%% 1h", r.percentText())
 	}
 	if !strings.HasPrefix(r.Notes[0], "Weekly: 0% used, reset ") {
 		t.Fatalf("note = %q", r.Notes[0])
@@ -220,14 +223,14 @@ func TestMultiAccount(t *testing.T) {
 	st.Claude["personal"] = ClaudeQuota{Plan: "pro", FetchedAt: now, Limits: []PlanLimit{{Name: "Weekly", Percent: 27, ResetsAt: soon}}}
 	r := claudeReport(st)
 	// The bar shows only the tagged account's cost; the total stays in the table.
-	if !near(r.Today, 4) || r.text() != "Claude $4.00 P 27%" {
+	if !near(r.Today, 4) || r.text() != "Claude $4.00 P 27% 1h" {
 		t.Fatalf("today = %v, text = %q", r.Today, r.text())
 	}
 
 	// You type in work: the bar switches.
 	writeLog(t, work, typed(0))
 	scanClaude(st, monthStart)
-	if got := claudeReport(st).text(); got != "Claude $8.00 W 90%" {
+	if got := claudeReport(st).text(); got != "Claude $8.00 W 90% 1h" {
 		t.Fatalf("after a prompt in work: text = %q", got)
 	}
 	table := strings.Join(r.table(), "\n")
@@ -332,33 +335,146 @@ func TestPool(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct {
-		name    string
-		q       ClaudeQuota
-		percent float64
-		credits bool
+		name     string
+		q        ClaudeQuota
+		percent  float64
+		resetsAt time.Time // zero for credits, which have no reset time
 	}{
-		{"inside the plan: weekly", ClaudeQuota{Limits: limits(70, 40), Limit: 500, Percent: 0}, 40, false},
-		{"weekly used up: credits", ClaudeQuota{Limits: limits(0, 100), Limit: 500, Percent: 12}, 12, true},
-		{"session used up: credits", ClaudeQuota{Limits: limits(100, 40), Limit: 500, Percent: 3}, 3, true},
-		{"used up, no credits: blocked", ClaudeQuota{Limits: limits(100, 40)}, 100, false},
+		{"inside the plan: weekly", ClaudeQuota{Limits: limits(70, 40), Limit: 500, Percent: 0}, 40, soon},
+		{"weekly used up: credits", ClaudeQuota{Limits: limits(0, 100), Limit: 500, Percent: 12}, 12, time.Time{}},
+		{"session used up: credits", ClaudeQuota{Limits: limits(100, 40), Limit: 500, Percent: 3}, 3, time.Time{}},
+		{"used up, no credits: blocked until the reset", ClaudeQuota{Limits: limits(100, 40)}, 100, soon},
 	} {
-		if p, c := tc.q.pool(); !near(p, tc.percent) || c != tc.credits {
-			t.Errorf("%s: pool = %v, %v; want %v, %v", tc.name, p, c, tc.percent, tc.credits)
+		if p, at := tc.q.pool(); !near(p, tc.percent) || !at.Equal(tc.resetsAt) {
+			t.Errorf("%s: pool = %v, %v; want %v, %v", tc.name, p, at, tc.percent, tc.resetsAt)
 		}
 	}
-	r := report{Name: "Claude", Today: 1, Quotas: []quota{{Tag: "W", Percent: 12, Credits: true}}}
-	if got := r.text(); got != "Claude $1.00 W 12%$" {
+	r := report{Name: "Claude", Today: 1, Quotas: []quota{{Tag: "W", Percent: 12, ResetsAt: now.Add(4*24*time.Hour + time.Hour)}}}
+	if got := r.text(); got != "Claude $1.00 W 12% 4d" {
 		t.Fatalf("text = %q", got)
 	}
 
 	// Codex: weekly from the logs, credits once it is used up.
 	st := &State{Days: map[string]*Day{}, Codex: CodexQuota{UsedPercent: 30, ResetsAt: soon.Unix(), SeenAt: now},
 		Spend: CodexSpend{Limit: 25000, Used: 500, Percent: 2, FetchedAt: now}}
-	if got := codexReport(st).percentText(); got != "30%" {
+	if got := codexReport(st).percentText(); got != "30% 1h" {
 		t.Fatalf("codex inside the plan = %q", got)
 	}
 	st.Codex.UsedPercent = 100
-	if got := codexReport(st).percentText(); got != "2%$" {
+	if got := codexReport(st).percentText(); got != "2%" {
 		t.Fatalf("codex weekly used up = %q", got)
+	}
+}
+
+func TestOpenCodeCost(t *testing.T) {
+	var tok openCodeTokens
+	tok.Input, tok.Output, tok.Cache.Read = 10_000, 10_000, 100_000
+	if got := openCodeCost("opencode", "gemini-4-neon", 0.42, tok); got != 0.42 {
+		t.Fatalf("billed cost = %v, want 0.42", got)
+	}
+	// Subscription: gpt-6.1-sol at API prices, 10K in*2 + 100K cached*0.10 + 10K out*10, per M.
+	if got := openCodeCost("openai", "gpt-6.1-sol", 0, tok); !near(got, 0.02+0.01+0.1) {
+		t.Fatalf("openai estimate = %v", got)
+	}
+	if got := openCodeCost("circle-ai-gateway", "dynamic/default-coder", 0, tok); got != 0 {
+		t.Fatalf("unpriced provider = %v, want 0", got)
+	}
+}
+
+func TestScanOpenCode(t *testing.T) {
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("needs the sqlite3 CLI")
+	}
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	db := openCodeDB()
+	if err := os.MkdirAll(filepath.Dir(db), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ms := strconv.FormatInt(now.UnixMilli(), 10)
+	msg := func(session, provider string, cost float64) string {
+		return "insert into session_message values ('" + session + "', 'assistant', " + ms + `, '{"model":{"providerID":"` +
+			provider + `","id":"m"},"cost":` + strconv.FormatFloat(cost, 'f', -1, 64) +
+			`,"tokens":{"input":1000,"output":0,"reasoning":0,"cache":{"read":0,"write":0}}}');`
+	}
+	sql := `create table session_v2 (id text, metadata text);
+create table session_message (session_id text, type text, time_created integer, data text);
+insert into session_v2 values ('native', null), ('imported', '{"importedFrom":"claude"}');
+insert into session_message values ('native', 'user', ` + ms + `, '{"text":"hi"}');` +
+		msg("native", "opencode", 1.5) + msg("native", "claude-agent", 9) + msg("imported", "anthropic", 9)
+	if out, err := exec.Command("sqlite3", db, sql).CombinedOutput(); err != nil {
+		t.Fatalf("sqlite3: %v %s", err, out)
+	}
+
+	st := &State{Days: map[string]*Day{today: {OpenCodeCost: 99}}}
+	scanOpenCode(st, now.Add(-time.Hour))
+	d := st.Days[today]
+	// Only the native, billed reply counts; the stale 99 from an earlier run is replaced.
+	if !st.OpenCode || !near(d.OpenCodeCost, 1.5) || d.OpenCodeTokens != 1000 || !near(d.OpenCodeBy["opencode"], 1.5) {
+		t.Fatalf("day = %+v", d)
+	}
+	if got := openCodeReport(st).text(); got != "OpenCode $1.50" {
+		t.Fatalf("text = %q", got)
+	}
+}
+
+func TestOpenCodeBudget(t *testing.T) {
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("needs the sqlite3 CLI")
+	}
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	db := openCodeDB()
+	if err := os.MkdirAll(filepath.Dir(db), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sql := `create table credential (integration_id text, active integer, value text);
+insert into credential values ('opencode', 0, '{"type":"key","key":"old"}');
+insert into credential values ('opencode', 1, '{"type":"oauth","access":"tok","metadata":{"orgID":"org1","orgName":"Team"}}');`
+	if out, err := exec.Command("sqlite3", db, sql).CombinedOutput(); err != nil {
+		t.Fatalf("sqlite3: %v %s", err, out)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("x-org-id") != "org1" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		// A fuller budget, and the one OpenCode picked for this user.
+		w.Write([]byte(`[{"limitDollars":10,"spentDollars":9,"picked":false,"resetsAt":1700000000000},
+			{"limitDollars":10000,"spentDollars":162.89,"picked":true,"resetsAt":"2099-12-01T00:00:00Z"}]`))
+	}))
+	defer srv.Close()
+	saved := openCodeBudgetURL
+	defer func() { openCodeBudgetURL = saved }()
+	openCodeBudgetURL = func(string) string { return srv.URL }
+
+	var b OpenCodeBudget
+	if err := fetchOpenCodeBudget(&b); err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2099, 12, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	if b.Limit != 10000 || !near(b.Spent, 162.89) || b.ResetsAt != want || b.Workspace != "Team" {
+		t.Fatalf("budget = %+v", b)
+	}
+	st := &State{Days: map[string]*Day{}, Budget: b}
+	r := openCodeReport(st)
+	if got := r.text(); !strings.HasPrefix(got, "OpenCode $0.00 2% ") || !strings.HasSuffix(got, "d") {
+		t.Fatalf("text = %q", got)
+	}
+	if !strings.HasPrefix(r.Notes[0], "Team budget: $162.89 / $10000.00 used, $9837.11 left") {
+		t.Fatalf("note = %q", r.Notes[0])
+	}
+}
+
+func TestTimeLeft(t *testing.T) {
+	for _, tc := range []struct {
+		in   time.Duration
+		want string
+	}{{11*24*time.Hour + 5*time.Hour, "11d"}, {24 * time.Hour, "1d"}, {23*time.Hour + time.Minute, "24h"},
+		{90 * time.Minute, "2h"}, {time.Minute, "1h"}, {-time.Minute, ""}} {
+		if got := timeLeft(now.Add(tc.in)); got != tc.want {
+			t.Errorf("timeLeft(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if timeLeft(time.Time{}) != "" {
+		t.Error("zero time should be unknown")
 	}
 }

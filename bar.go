@@ -28,6 +28,7 @@ var (
 // report is one tool's usage, rendered by each bar backend.
 type report struct {
 	Name    string
+	Basis   string // how cost is counted; default "estimate at API prices"
 	Glyph   string // Nerd Font icon for Linux bars
 	GlyphFG string
 	Tint    string // macOS icon color; empty keeps a monochrome template icon
@@ -40,10 +41,10 @@ type report struct {
 
 // quota is one percent on the bar.
 type quota struct {
-	Tag     string // account, when there are several
-	Percent float64
-	Credits bool // of the monthly credits, not a plan limit
-	Stale   bool
+	Tag      string // account, when there are several
+	Percent  float64
+	ResetsAt time.Time // zero when unknown
+	Stale    bool
 }
 
 func todayUsage(st *State) *Day {
@@ -121,7 +122,7 @@ func claudeReport(st *State) report {
 		}
 		if a == active {
 			q := quota{Stale: time.Since(c.FetchedAt) > apiStale}
-			q.Percent, q.Credits = c.pool()
+			q.Percent, q.ResetsAt = c.pool()
 			if multi {
 				q.Tag = tag(a.Name, accounts)
 			}
@@ -175,22 +176,25 @@ func tag(name string, accounts []claudeAccount) string {
 //	a limit used up, no credits → 100%: you are blocked until it resets
 //
 // The 5-hour session limit counts only once used up: it resets too often to watch.
-func (c ClaudeQuota) pool() (percent float64, credits bool) {
-	usedUp := false
+func (c ClaudeQuota) pool() (percent float64, resetsAt time.Time) {
+	var blockedUntil time.Time
 	for _, l := range c.Limits {
 		p := current(l.Percent, l.ResetsAt)
-		usedUp = usedUp || p >= 100
-		if l.Kind != "session" {
-			percent = max(percent, p)
+		if p >= 100 && l.ResetsAt.After(blockedUntil) {
+			blockedUntil = l.ResetsAt
+		}
+		if l.Kind != "session" && (p > percent || resetsAt.IsZero()) {
+			percent, resetsAt = p, l.ResetsAt
 		}
 	}
 	switch {
-	case usedUp && c.Limit > 0:
-		return c.Percent, true
-	case usedUp:
-		return 100, false
+	case !blockedUntil.IsZero() && c.Limit > 0:
+		// The credits API gives no reset time.
+		return c.Percent, time.Time{}
+	case !blockedUntil.IsZero():
+		return 100, blockedUntil
 	}
-	return percent, false
+	return percent, resetsAt
 }
 
 // creditsNote labels the monthly credits, which pay only for use past the plan limits.
@@ -231,12 +235,12 @@ func codexReport(st *State) report {
 	// The weekly limit comes from the session logs, so only the credits go stale.
 	if x := st.Codex; !x.SeenAt.IsZero() {
 		resetsAt := time.Unix(x.ResetsAt, 0)
-		r.Quotas = []quota{{Percent: current(x.UsedPercent, resetsAt)}}
+		r.Quotas = []quota{{Percent: current(x.UsedPercent, resetsAt), ResetsAt: resetsAt}}
 		r.Notes = append(r.Notes, limitNote(window(x.WindowMinutes), x.UsedPercent, resetsAt))
 	}
 	if s := st.Spend; s.Limit > 0 {
 		if len(r.Quotas) == 0 || r.Quotas[0].Percent >= 100 {
-			r.Quotas = []quota{{Percent: s.Percent, Credits: true, Stale: time.Since(s.FetchedAt) > apiStale}}
+			r.Quotas = []quota{{Percent: s.Percent, ResetsAt: time.Unix(s.ResetsAt, 0), Stale: time.Since(s.FetchedAt) > apiStale}}
 		}
 		line := creditsNote + fmt.Sprintf("%.0f / %.0f used", s.Used, s.Limit)
 		if rate := cfg.CodexCreditUSD; rate > 0 {
@@ -272,14 +276,15 @@ func (r report) level() string {
 	return level
 }
 
-// text is "78%", "78%$" for credits, or "W 78%" with several accounts.
+// text is "78% 4d": the percent and the time to its reset, or "W 78% 4d"
+// with several accounts.
 func (q quota) text() string {
 	s := fmt.Sprintf("%.0f%%", q.Percent)
-	if q.Credits {
-		s += "$"
-	}
 	if q.Stale {
 		s += "?"
+	}
+	if left := timeLeft(q.ResetsAt); left != "" {
+		s += " " + left
 	}
 	if q.Tag != "" {
 		s = q.Tag + " " + s
@@ -346,7 +351,7 @@ type waybarBlock struct {
 }
 
 func (r report) waybar() waybarBlock {
-	tip := fmt.Sprintf("<b>%s</b>  (estimate at API prices)\n<tt>%s</tt>", r.Name, strings.Join(r.table(), "\n"))
+	tip := fmt.Sprintf("<b>%s</b>  (%s)\n<tt>%s</tt>", r.Name, r.basis(), strings.Join(r.table(), "\n"))
 	if len(r.Notes) > 0 {
 		tip += "\n\n" + strings.Join(r.Notes, "\n")
 	}
@@ -373,7 +378,7 @@ func (r report) menubar() menubarItem {
 	case "crit":
 		m.Color = fgBad
 	}
-	m.Lines = append([]string{r.Name + " (estimate at API prices)"}, r.table()...)
+	m.Lines = append([]string{r.Name + " (" + r.basis() + ")"}, r.table()...)
 	if len(r.Notes) > 0 {
 		m.Lines = append(m.Lines, "---")
 		for _, n := range r.Notes {
@@ -384,6 +389,25 @@ func (r report) menubar() menubarItem {
 		}
 	}
 	return m
+}
+
+func (r report) basis() string {
+	if r.Basis != "" {
+		return r.Basis
+	}
+	return "estimate at API prices"
+}
+
+// timeLeft is whole days to t, or hours in the last day; "" when unknown or past.
+func timeLeft(t time.Time) string {
+	d := t.Sub(now)
+	switch {
+	case t.IsZero() || d <= 0:
+		return ""
+	case d >= 24*time.Hour:
+		return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
+	}
+	return fmt.Sprintf("%dh", max(1, int((d+time.Hour-1)/time.Hour)))
 }
 
 func usd(v float64) string {

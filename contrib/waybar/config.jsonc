@@ -1,4 +1,4 @@
-// Add to your Waybar config, then put "custom/claude" and "custom/codex" in a modules list.
+// Add to your Waybar config, then put "custom/claude", "custom/codex" and "custom/opencode" in a modules list.
 {
   "custom/claude": {
     "exec": "cat ~/.cache/burnrate/claude.json",
@@ -8,6 +8,13 @@
   },
   "custom/codex": {
     "exec": "cat ~/.cache/burnrate/codex.json",
+    "return-type": "json",
+    "interval": 10,
+    "on-click": "systemctl --user start burnrate.service"
+  },
+  // Only with OpenCode V2 installed; burnrate skips it otherwise.
+  "custom/opencode": {
+    "exec": "cat ~/.cache/burnrate/opencode.json",
     "return-type": "json",
     "interval": 10,
     "on-click": "systemctl --user start burnrate.service"
