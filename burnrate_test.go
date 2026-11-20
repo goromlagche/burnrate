@@ -376,7 +376,7 @@ func TestOpenCodeCost(t *testing.T) {
 	if got := openCodeCost("openai", "gpt-6.1-sol", 0, tok); !near(got, 0.02+0.01+0.1) {
 		t.Fatalf("openai estimate = %v", got)
 	}
-	if got := openCodeCost("circle-ai-gateway", "dynamic/default-coder", 0, tok); got != 0 {
+	if got := openCodeCost("example-gateway", "some-model", 0, tok); got != 0 {
 		t.Fatalf("unpriced provider = %v, want 0", got)
 	}
 }
